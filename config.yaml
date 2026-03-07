@@ -1,0 +1,113 @@
+# ============================================================
+# Something from Everything — Configuration
+# ============================================================
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+
+database:
+  path: "data/sfe.db"
+
+# KoboldCpp LLM Configuration
+llm:
+  koboldcpp_url: "http://localhost:5001"
+  main_model:
+    name: "qwen3.5-4b"
+    max_tokens: 2048
+    temperature: 0.7
+  support_model:
+    name: "qwen-1.5b"
+    max_tokens: 512
+    temperature: 0.3
+
+# Data Collection Sources
+sources:
+  rss:
+    enabled: true
+    interval_minutes: 30
+    feeds:
+      - name: "Reuters World"
+        url: "https://feeds.reuters.com/reuters/worldNews"
+        category: "world_news"
+      - name: "BBC News"
+        url: "http://feeds.bbci.co.uk/news/rss.xml"
+        category: "world_news"
+      - name: "TechCrunch"
+        url: "https://techcrunch.com/feed/"
+        category: "technology"
+      - name: "NASA Breaking News"
+        url: "https://www.nasa.gov/rss/dyn/breaking_news.rss"
+        category: "science"
+
+  social:
+    enabled: true
+    interval_minutes: 15
+    reddit:
+      subreddits:
+        - "worldnews"
+        - "technology"
+        - "science"
+        - "economics"
+        - "futurology"
+      posts_per_subreddit: 25
+    hackernews:
+      top_stories_count: 30
+
+  finance:
+    enabled: true
+    interval_minutes: 60
+    symbols:
+      - "^GSPC"    # S&P 500
+      - "^DJI"     # Dow Jones
+      - "^IXIC"    # NASDAQ
+      - "GC=F"     # Gold
+      - "CL=F"     # Crude Oil
+      - "BTC-USD"  # Bitcoin
+      - "ETH-USD"  # Ethereum
+
+  weather:
+    enabled: true
+    interval_minutes: 120
+    locations:
+      - name: "New York"
+        latitude: 40.7128
+        longitude: -74.0060
+      - name: "London"
+        latitude: 51.5074
+        longitude: -0.1278
+      - name: "Tokyo"
+        latitude: 35.6762
+        longitude: 139.6503
+
+  web_scraper:
+    enabled: true
+    interval_minutes: 60
+    targets: []
+
+# Analytics Configuration
+analytics:
+  sentiment:
+    enabled: true
+    spike_threshold: 0.3
+  trends:
+    enabled: true
+    z_score_threshold: 2.0
+    rolling_window: 24
+  correlator:
+    enabled: true
+    min_correlation: 0.6
+    min_data_points: 10
+  clustering:
+    enabled: true
+    max_clusters: 10
+    min_cluster_size: 3
+
+# Alert Configuration
+alerts:
+  enabled: true
+  severity_levels:
+    critical: 0.9
+    high: 0.7
+    medium: 0.5
+    low: 0.3
