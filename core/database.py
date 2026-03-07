@@ -6,7 +6,7 @@ import json
 import os
 from datetime import datetime
 from typing import List, Optional
-from core.models import DataItem, Insight, Alert, AgentAction
+from core.models import DataItem, Insight, Alert, AgentAction, TopicCluster
 
 
 class Database:
@@ -90,6 +90,19 @@ class Database:
             CREATE INDEX IF NOT EXISTS idx_insights_severity ON insights(severity);
             CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity);
             CREATE INDEX IF NOT EXISTS idx_alerts_acknowledged ON alerts(acknowledged);
+            
+            CREATE TABLE IF NOT EXISTS topic_clusters (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                keywords TEXT NOT NULL,
+                base_category TEXT DEFAULT 'general',
+                active_domains TEXT DEFAULT '[]',
+                size INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                narrative_summary TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_topic_clusters_updated ON topic_clusters(last_updated);
         """)
         await self.db.commit()
 
@@ -260,6 +273,54 @@ class Database:
         )
         rows = await cursor.fetchall()
         return [self._row_to_dict(row) for row in rows]
+
+    # ─── Topic Clusters ──────────────────────────────────────────────
+    
+    async def store_topic_cluster(self, cluster: TopicCluster) -> str:
+        await self.db.execute(
+            """INSERT INTO topic_clusters 
+               (id, name, keywords, base_category, active_domains, size, 
+                created_at, last_updated, narrative_summary)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (cluster.id, cluster.name, json.dumps(cluster.keywords), cluster.base_category,
+             json.dumps(cluster.active_domains), cluster.size, 
+             cluster.created_at.isoformat(), cluster.last_updated.isoformat(),
+             cluster.narrative_summary)
+        )
+        await self.db.commit()
+        return cluster.id
+
+    async def update_topic_cluster(self, cluster: TopicCluster):
+        await self.db.execute(
+            """UPDATE topic_clusters 
+               SET name = ?, keywords = ?, active_domains = ?, size = ?, 
+                   last_updated = ?, narrative_summary = ?
+               WHERE id = ?""",
+            (cluster.name, json.dumps(cluster.keywords), json.dumps(cluster.active_domains),
+             cluster.size, cluster.last_updated.isoformat(), 
+             cluster.narrative_summary, cluster.id)
+        )
+        await self.db.commit()
+
+    async def get_recent_topic_clusters(self, days: int = 7, limit: int = 50) -> List[dict]:
+        cursor = await self.db.execute(
+            """SELECT * FROM topic_clusters 
+               WHERE last_updated >= datetime('now', ?) 
+               ORDER BY last_updated DESC LIMIT ?""",
+            (f'-{days} days', limit)
+        )
+        rows = await cursor.fetchall()
+        results = []
+        for row in rows:
+            d = self._row_to_dict(row)
+            for field in ['keywords', 'active_domains']:
+                if isinstance(d.get(field), str):
+                    try:
+                        d[field] = json.loads(d[field])
+                    except json.JSONDecodeError:
+                        d[field] = []
+            results.append(d)
+        return results
 
     # ─── Stats ───────────────────────────────────────────────────────
 

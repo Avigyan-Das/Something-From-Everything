@@ -1,137 +1,118 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Something from Everything — Multi-utility intelligence platform that collects open web data, finds patterns, and surfaces actionable insights.">
-    <title>Something from Everything — Intelligence Dashboard</title>
+    <meta name="description" content="Something from Everything — 3D Intelligence Dashboard">
+    <title>Something from Everything — 3D Intelligence Dashboard</title>
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔮</text></svg>">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+
+    <!-- Three.js + 3D Force Graph -->
+    <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three-spritetext@1.8.2/dist/three-spritetext.min.js"></script>
+    <script src="https://unpkg.com/3d-force-graph@1.73.3/dist/3d-force-graph.min.js"></script>
+
     <link rel="stylesheet" href="/static/style.css">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔮</text></svg>">
 </head>
+
 <body>
 
-    <!-- ── Header ────────────────────────────────────────── -->
-    <header class="header">
-        <div class="header-left">
-            <div>
-                <div class="logo">Something from Everything</div>
-                <div class="logo-sub">Multi-Utility Intelligence Platform</div>
+    <!-- ═══ Full-Screen 3D Canvas ═══════════════════════ -->
+    <div id="3d-graph"></div>
+
+    <!-- ═══ Floating UI Overlay Layer ═══════════════════ -->
+
+    <!-- Top Bar -->
+    <header id="top-bar">
+        <div class="top-left">
+            <div class="brand">
+                <span class="brand-icon">🔮</span>
+                <div>
+                    <div class="brand-name">Something from Everything</div>
+                    <div class="brand-sub">3D Intelligence Matrix</div>
+                </div>
             </div>
         </div>
-        <div class="header-right">
-            <div class="status-badge" id="llm-status">
-                <span class="status-dot offline" id="llm-dot"></span>
-                <span id="llm-status-text">LLM Offline</span>
+        <div class="top-right">
+            <div class="pill" id="llm-pill">
+                <span class="dot offline" id="llm-dot"></span>
+                <span id="llm-text">LLM Offline</span>
             </div>
-            <div class="status-badge" id="ws-status">
-                <span class="status-dot offline" id="ws-dot"></span>
-                <span id="ws-status-text">Disconnected</span>
+            <div class="pill" id="ws-pill">
+                <span class="dot offline" id="ws-dot"></span>
+                <span id="ws-text">Disconnected</span>
             </div>
         </div>
     </header>
 
-    <!-- ── Main Content ──────────────────────────────────── -->
-    <main class="main-content">
-
-        <!-- Stats Bar -->
-        <div class="stats-bar">
-            <div class="stat-card">
-                <div class="stat-label">Data Collected</div>
-                <div class="stat-value" id="stat-data">0</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Insights Found</div>
-                <div class="stat-value" id="stat-insights">0</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Active Alerts</div>
-                <div class="stat-value" id="stat-alerts">0</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Sources Active</div>
-                <div class="stat-value" id="stat-sources">0</div>
-            </div>
+    <!-- Left: Stats -->
+    <div id="stats-panel" class="glass-panel">
+        <div class="mini-stat">
+            <span class="mini-label">DATA NODES</span>
+            <span class="mini-value" id="stat-data">0</span>
         </div>
-
-        <!-- Action Buttons -->
-        <div class="actions-bar">
-            <button class="btn btn-primary" id="btn-collect" onclick="triggerCollection()">
-                ⚡ Collect Now
-            </button>
-            <button class="btn btn-secondary" id="btn-analyze" onclick="triggerAnalysis()">
-                🧠 Analyze Now
-            </button>
-            <button class="btn btn-ghost" onclick="refreshAll()">
-                🔄 Refresh
-            </button>
+        <div class="mini-stat">
+            <span class="mini-label">INSIGHTS</span>
+            <span class="mini-value" id="stat-insights">0</span>
         </div>
-
-        <!-- Dashboard Grid -->
-        <div class="dashboard-grid">
-
-            <!-- Live Data Feed -->
-            <div class="panel">
-                <div class="panel-header">
-                    <span class="panel-title"><span class="icon">📡</span> Live Data Feed</span>
-                    <span class="panel-badge" id="feed-count">0</span>
-                </div>
-                <div class="panel-body" id="data-feed">
-                    <div class="empty-state">
-                        <div class="empty-icon">📡</div>
-                        <div class="empty-text">No data collected yet</div>
-                        <div class="empty-hint">Click "Collect Now" to start gathering data</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Insights Panel -->
-            <div class="panel">
-                <div class="panel-header">
-                    <span class="panel-title"><span class="icon">💡</span> Pattern Insights</span>
-                    <span class="panel-badge" id="insight-count">0</span>
-                </div>
-                <div class="panel-body" id="insights-panel">
-                    <div class="empty-state">
-                        <div class="empty-icon">💡</div>
-                        <div class="empty-text">No insights yet</div>
-                        <div class="empty-hint">Collect data and run analysis to discover patterns</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Alerts Panel -->
-            <div class="panel full-width">
-                <div class="panel-header">
-                    <span class="panel-title"><span class="icon">🔔</span> Alerts</span>
-                    <span class="panel-badge" id="alert-count">0</span>
-                </div>
-                <div class="panel-body" id="alerts-panel">
-                    <div class="empty-state">
-                        <div class="empty-icon">🔔</div>
-                        <div class="empty-text">No alerts</div>
-                        <div class="empty-hint">Alerts will appear when significant patterns are detected</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Sources Panel -->
-            <div class="panel full-width">
-                <div class="panel-header">
-                    <span class="panel-title"><span class="icon">🌐</span> Data Sources</span>
-                </div>
-                <div class="panel-body" id="sources-panel">
-                    <div class="empty-state">
-                        <div class="empty-text">Loading sources...</div>
-                    </div>
-                </div>
-            </div>
-
+        <div class="mini-stat">
+            <span class="mini-label">ALERTS</span>
+            <span class="mini-value" id="stat-alerts">0</span>
         </div>
-    </main>
+        <div class="mini-stat">
+            <span class="mini-label">LINKS</span>
+            <span class="mini-value" id="stat-links">0</span>
+        </div>
+    </div>
 
-    <!-- Toast Container -->
-    <div class="toast-container" id="toast-container"></div>
+    <!-- Bottom Left: Actions -->
+    <div id="actions-panel" class="glass-panel">
+        <button class="btn btn-glow" id="btn-collect" onclick="doCollect()">⚡ Collect Data</button>
+        <button class="btn btn-outline" id="btn-analyze" onclick="doAnalyze()">🧠 Find Patterns</button>
+        <button class="btn btn-ghost" onclick="reloadGraph()">🔄 Reload</button>
+        <button class="btn btn-ghost" onclick="recenter()">🎯 Recenter</button>
+    </div>
+
+    <!-- Bottom Right: Legend -->
+    <div id="legend-panel" class="glass-panel">
+        <div class="legend-title">🧭 Node Types</div>
+        <div class="legend-grid">
+            <span class="lg-dot" style="background:#00d4ff;border-radius:50%"></span><span>RSS</span>
+            <span class="lg-dot" style="background:#ec4899"></span><span>Reddit</span>
+            <span class="lg-dot"
+                style="background:#f59e0b;border-radius:50%;border:2px solid #f59e0b;background:transparent"></span><span>HackerNews</span>
+            <span class="lg-dot"
+                style="background:#10b981;clip-path:polygon(50% 0%,0% 100%,100% 100%)"></span><span>Finance</span>
+            <span class="lg-dot" style="background:#a855f7;border-radius:50%"></span><span>Weather</span>
+            <span class="lg-dot lg-glow" style="background:#ef4444"></span><span>🔴 Critical</span>
+            <span class="lg-dot lg-glow" style="background:#f59e0b"></span><span>🟡 High</span>
+            <span class="lg-dot lg-glow" style="background:#00d4ff"></span><span>🔵 Medium</span>
+        </div>
+    </div>
+
+    <!-- Right: Detail Panel (slides in) -->
+    <aside id="detail-panel">
+        <div class="detail-head">
+            <h3 id="detail-title">Node Details</h3>
+            <button class="btn-x" onclick="closeDetail()">✕</button>
+        </div>
+        <div id="detail-body" class="detail-body">
+            <p class="muted">Click any node in the 3D space to inspect it.</p>
+        </div>
+    </aside>
+
+    <!-- Toasts -->
+    <div id="toasts"></div>
 
     <script src="/static/app.js"></script>
 </body>
+
 </html>

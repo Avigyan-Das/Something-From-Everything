@@ -34,8 +34,8 @@ class AgentOrchestrator:
         self.analyzers = [
             SentimentAnalyzer(analytics_cfg.get("sentiment", {})),
             TrendAnalyzer(analytics_cfg.get("trends", {})),
-            CorrelationAnalyzer(analytics_cfg.get("correlator", {})),
-            ClusteringAnalyzer(analytics_cfg.get("clustering", {})),
+            CorrelationAnalyzer(analytics_cfg.get("correlator", {}), db=self.db),
+            ClusteringAnalyzer(analytics_cfg.get("clustering", {}), db=self.db),
         ]
 
         # Initialize agents

@@ -11,10 +11,11 @@ import math
 
 
 class CorrelationAnalyzer(BaseAnalyzer):
-    def __init__(self, config: dict = None):
+    def __init__(self, config: dict = None, db=None):
         super().__init__("correlator", config)
         self.min_correlation = config.get("min_correlation", 0.6) if config else 0.6
         self.min_data_points = config.get("min_data_points", 5) if config else 5
+        self.db = db
 
     async def analyze(self, data_items: List[dict]) -> List[Insight]:
         if len(data_items) < self.min_data_points:
@@ -29,6 +30,10 @@ class CorrelationAnalyzer(BaseAnalyzer):
         # ── Analysis 2: Sentiment-to-finance correlation ──
         fin_insights = self._correlate_sentiment_finance(data_items)
         insights.extend(fin_insights)
+
+        # ── Analysis 3: Cross-cluster Domain Bleed ──
+        cluster_insights = await self._correlate_clusters()
+        insights.extend(cluster_insights)
 
         return insights
 
@@ -147,6 +152,41 @@ class CorrelationAnalyzer(BaseAnalyzer):
                 ]
             ))
 
+        return insights
+
+    async def _correlate_clusters(self) -> List[Insight]:
+        """Detect 'Domain Bleed': when a cluster is active in multiple unrelated domains."""
+        insights = []
+        if not self.db:
+            return insights
+            
+        recent_clusters = await self.db.get_recent_topic_clusters(days=2, limit=20)
+        
+        for cluster in recent_clusters:
+            active_domains = cluster.get("active_domains", [])
+            size = cluster.get("size", 0)
+            
+            # Domain Bleed: Cluster spans multiple distinct categories
+            if len(active_domains) > 1 and size >= self.min_data_points:
+                insights.append(Insight(
+                    title=f"Domain Bleed: {cluster.get('name')}",
+                    description=(f"Topic '{cluster.get('name')}' is crossing boundaries and is active across "
+                                 f"{len(active_domains)} distinct domains: {', '.join(active_domains)}. "
+                                 f"This indicates a pervasive real-world event affecting multiple sectors."),
+                    insight_type="domain_bleed",
+                    confidence=min(0.5 + (len(active_domains) * 0.1), 0.95),
+                    severity=SeverityLevel.HIGH if len(active_domains) >= 3 else SeverityLevel.MEDIUM,
+                    domains=active_domains,
+                    metadata={
+                        "cluster_id": cluster.get("id"),
+                        "size": size,
+                        "base_category": cluster.get("base_category")
+                    },
+                    recommended_actions=[
+                        f"Investigate root cause connecting these domains",
+                        "Look for cascading effects"
+                    ]
+                ))
         return insights
 
     @staticmethod

@@ -31,41 +31,79 @@ class InsightAgent:
 
         # Group related insights for batch analysis
         high_priority = [i for i in analytics_insights
-                          if i.severity in ("critical", "high")]
+                          if i.severity in ("critical", "high") and i.insight_type != "topic_cluster"]
 
         if not high_priority:
             # If no high-priority, take top 3 by confidence
-            high_priority = sorted(analytics_insights,
+            high_priority = sorted([i for i in analytics_insights if i.insight_type != "topic_cluster"],
                                     key=lambda x: x.confidence, reverse=True)[:3]
 
-        if not high_priority:
-            return []
+        if high_priority:
+            # Build context for LLM
+            analytics_summary = self._format_insights_for_llm(high_priority)
+            data_summary = self._format_data_for_llm(data_items[:50])
 
-        # Build context for LLM
-        analytics_summary = self._format_insights_for_llm(high_priority)
-        data_summary = self._format_data_for_llm(data_items[:50])
+            try:
+                # Use support model to decompose the analysis task
+                subtasks = await self.llm.decompose_task(
+                    f"Analyze these {len(high_priority)} insights and {len(data_items)} data points "
+                    f"to find hidden patterns, connections, and actionable opportunities."
+                )
+                logger.info(f"Task decomposed into {len(subtasks)} subtasks")
 
-        try:
-            # Use support model to decompose the analysis task
-            subtasks = await self.llm.decompose_task(
-                f"Analyze these {len(high_priority)} insights and {len(data_items)} data points "
-                f"to find hidden patterns, connections, and actionable opportunities."
-            )
-            logger.info(f"Task decomposed into {len(subtasks)} subtasks")
+                # Use main model to synthesize insights
+                llm_response = await self.llm.synthesize_insight(
+                    analytics_summary, data_summary
+                )
 
-            # Use main model to synthesize insights
-            llm_response = await self.llm.synthesize_insight(
-                analytics_summary, data_summary
-            )
+                if llm_response:
+                    # Parse LLM response into insight
+                    insight = self._parse_llm_insight(llm_response, high_priority)
+                    if insight:
+                        enhanced.append(insight)
 
-            if llm_response:
-                # Parse LLM response into insight
-                insight = self._parse_llm_insight(llm_response, high_priority)
-                if insight:
-                    enhanced.append(insight)
+            except Exception as e:
+                logger.error(f"Insight enhancement failed: {e}")
 
-        except Exception as e:
-            logger.error(f"Insight enhancement failed: {e}")
+        # Process significant clusters to generate narratives
+        significant_clusters = [i for i in analytics_insights if i.insight_type == "topic_cluster" and i.metadata.get("is_significant")]
+        
+        for cluster_insight in significant_clusters[:5]:
+            cluster_id = cluster_insight.metadata.get("cluster_id")
+            cluster_data = [item for item in data_items if item.get("id") in cluster_insight.supporting_data]
+            
+            try:
+                summary_prompt = (
+                    f"Analyze this cluster of {len(cluster_data)} data items identified by keywords: "
+                    f"{', '.join(cluster_insight.metadata.get('keywords', []))}. "
+                    "What is the underlying narrative of this cluster? Why does it matter right now? "
+                    "What is the predicted next step? Format your response clearly."
+                )
+                await self.llm.decompose_task(summary_prompt)
+                
+                data_summary = self._format_data_for_llm(cluster_data)
+                llm_response = await self.llm.synthesize_insight(
+                    f"Cluster Info: {cluster_insight.title} \n {cluster_insight.description}", data_summary
+                )
+                
+                if llm_response:
+                    narrative_insight = self._parse_llm_insight(llm_response, [cluster_insight])
+                    if narrative_insight:
+                        narrative_insight.title = f"Narrative: {cluster_insight.title.replace('Topic cluster: ', '')}"
+                        narrative_insight.insight_type = "cluster_narrative"
+                        # High severity if confidence is high since it's an evolving meaningful narrative
+                        if narrative_insight.confidence > 0.8:
+                            narrative_insight.severity = SeverityLevel.HIGH
+                        enhanced.append(narrative_insight)
+                        
+                        if self.db and cluster_id:
+                            await self.db.db.execute(
+                                "UPDATE topic_clusters SET narrative_summary = ? WHERE id = ?", 
+                                (llm_response[:2000], cluster_id)
+                            )
+                            await self.db.db.commit()
+            except Exception as e:
+                logger.error(f"Failed to synthesize narrative for cluster {cluster_insight.title}: {e}")
 
         return enhanced
 
