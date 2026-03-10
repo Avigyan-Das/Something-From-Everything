@@ -9,6 +9,15 @@ server:
 database:
   path: "data/sfe.db"
 
+# Real-time firehose configuration
+firehose:
+  enabled: true
+  stream_url: "wss://stream.wikimedia.org/v2/stream/recentchange"
+  window_seconds: 300
+  flush_interval_seconds: 300
+  top_n: 3
+  reconnect_delay_seconds: 5
+
 # KoboldCpp LLM Configuration
 llm:
   koboldcpp_url: "http://localhost:5001"
