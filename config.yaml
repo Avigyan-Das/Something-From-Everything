@@ -18,6 +18,28 @@ firehose:
   top_n: 3
   reconnect_delay_seconds: 5
 
+
+# CertStream keyword monitor
+certstream:
+  enabled: true
+  stream_url: "wss://certstream.calidog.io/"
+  keywords: ["ai", "crypto", "login", "bank"]
+  flush_interval_seconds: 300
+  reconnect_delay_seconds: 5
+
+# GDELT extremes parser
+gdelt:
+  enabled: true
+  interval_minutes: 15
+  lastupdate_url: "http://data.gdeltproject.org/gdeltv2/lastupdate.txt"
+  top_n: 10
+
+# Phishing TLD abuse feed
+phish_feed:
+  enabled: true
+  interval_minutes: 60
+  feed_url: "https://openphish.com/feed.txt"
+  top_n: 5
 # KoboldCpp LLM Configuration
 llm:
   koboldcpp_url: "http://localhost:5001"
@@ -120,3 +142,4 @@ alerts:
     high: 0.7
     medium: 0.5
     low: 0.3
+

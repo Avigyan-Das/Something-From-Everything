@@ -142,7 +142,17 @@ function makeNode(n) {
         };
 
     } else {
-        const s = SRC_MAP[n.source] || SRC_MAP.rss;
+        let s;
+        if (n.metadata?.pipeline === 'certstream_keyword_monitor') {
+            s = { color: 0x39ff14, make: () => new THREE.CylinderGeometry(2, 2, 8, 16) }; // Neon green cylinder
+        } else if (n.metadata?.pipeline === 'gdelt_extremes') {
+            s = { color: 0xff4500, make: () => new THREE.SphereGeometry(4.5, 16, 16) };  // OrangeRed larger sphere
+        } else if (n.metadata?.pipeline === 'openphish_tld_aggregation') {
+            s = { color: 0x8a2be2, make: () => new THREE.DodecahedronGeometry(3.5) };      // Purple dodecahedron
+        } else {
+            s = SRC_MAP[n.source] || SRC_MAP.rss;
+        }
+
         const mesh = new THREE.Mesh(
             s.make(),
             new THREE.MeshLambertMaterial({ color: s.color, transparent: true, opacity: 0.85 })
@@ -230,8 +240,35 @@ function onClickNode(n) {
     } else {
         const src = n.source || 'unknown';
         const cat = n.category || '';
-        const body = esc(typeof n.content === 'object' ? JSON.stringify(n.content, null, 2) : (n.content || ''));
         const time = timeAgo(n.collected_at);
+
+        let body = '';
+        if (n.metadata?.pipeline === 'certstream_keyword_monitor' && n.metadata.counts) {
+            body = `<div style="margin-bottom:8px">${esc(n.content)}</div><ul>`;
+            for (const [kw, count] of Object.entries(n.metadata.counts)) {
+                body += `<li style="margin-bottom: 2px"><b>${esc(kw)}</b>: ${count} hits</li>`;
+            }
+            body += '</ul>';
+        } else if (n.metadata?.pipeline === 'gdelt_extremes' && n.metadata.events) {
+            body = `<div style="margin-bottom:8px">${esc(n.content)}</div><div style="max-height: 200px; overflow-y: auto;">`;
+            n.metadata.events.forEach(ev => {
+                body += `<div style="margin-bottom: 6px; padding: 6px; background: rgba(255,255,255,0.05); border-radius: 4px; font-size: 0.8rem">`;
+                body += `<div><b>Actors:</b> ${esc(ev.actor1 || 'unknown')} - ${esc(ev.actor2 || 'unknown')}</div>`;
+                if (ev.tone !== null) body += `<div><b>Tone:</b> ${ev.tone}</div>`;
+                if (ev.goldstein !== null) body += `<div><b>Goldstein:</b> ${ev.goldstein}</div>`;
+                if (ev.source_url) body += `<div style="margin-top:4px"><a class="d-link" href="${ev.source_url}" target="_blank">Source Link →</a></div>`;
+                body += `</div>`;
+            });
+            body += '</div>';
+        } else if (n.metadata?.pipeline === 'openphish_tld_aggregation' && n.metadata.top_tlds) {
+            body = `<div style="margin-bottom:8px">${esc(n.content)}</div><div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px">`;
+            n.metadata.top_tlds.forEach(tld => {
+                body += `<span class="d-tag tag-high">${esc(tld.tld)} (${tld.count})</span>`;
+            });
+            body += '</div>';
+        } else {
+            body = esc(typeof n.content === 'object' ? JSON.stringify(n.content, null, 2) : (n.content || ''));
+        }
 
         b.innerHTML = `
             <div class="d-title">${title}</div>

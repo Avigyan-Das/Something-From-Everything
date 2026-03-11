@@ -23,7 +23,8 @@ from collectors.social_collector import SocialCollector
 from collectors.weather_collector import WeatherCollector
 from collectors.web_scraper import WebScraperCollector
 from core.database import Database
-from core.firehose import WikipediaFirehose
+from core.firehose import CertStreamKeywordMonitor, WikipediaFirehose
+from core.global_stream_jobs import run_gdelt_extremes_job, run_phish_tld_job
 
 
 logging.basicConfig(
@@ -69,7 +70,7 @@ if sources_cfg.get("weather", {}).get("enabled", True):
 orchestrator = AgentOrchestrator(db, llm, config)
 
 firehose_cfg = config.get("firehose", {})
-firehose = WikipediaFirehose(
+wikipedia_firehose = WikipediaFirehose(
     db=db,
     stream_url=firehose_cfg.get(
         "stream_url", "wss://stream.wikimedia.org/v2/stream/recentchange"
@@ -79,6 +80,18 @@ firehose = WikipediaFirehose(
     top_n=firehose_cfg.get("top_n", 3),
     reconnect_delay_seconds=firehose_cfg.get("reconnect_delay_seconds", 5),
 )
+
+certstream_cfg = config.get("certstream", {})
+certstream_monitor = CertStreamKeywordMonitor(
+    db=db,
+    stream_url=certstream_cfg.get("stream_url", "wss://certstream.calidog.io/"),
+    keywords=certstream_cfg.get("keywords", ["ai", "crypto", "login", "bank"]),
+    flush_interval_seconds=certstream_cfg.get("flush_interval_seconds", 300),
+    reconnect_delay_seconds=certstream_cfg.get("reconnect_delay_seconds", 5),
+)
+
+gdelt_cfg = config.get("gdelt", {})
+phish_cfg = config.get("phish_feed", {})
 
 
 async def scheduled_collection():
@@ -122,6 +135,8 @@ async def lifespan(app: FastAPI):
         minutes=collection_interval,
         id="collection",
         name="Data Collection",
+        max_instances=1,
+        coalesce=True,
     )
     scheduler.add_job(
         scheduled_analysis,
@@ -129,14 +144,54 @@ async def lifespan(app: FastAPI):
         minutes=collection_interval + 5,
         id="analysis",
         name="Analysis Pipeline",
+        max_instances=1,
+        coalesce=True,
     )
+
+    if gdelt_cfg.get("enabled", True):
+        scheduler.add_job(
+            run_gdelt_extremes_job,
+            "interval",
+            minutes=gdelt_cfg.get("interval_minutes", 15),
+            id="gdelt_extremes",
+            name="GDELT Extremes",
+            kwargs={
+                "db": db,
+                "lastupdate_url": gdelt_cfg.get(
+                    "lastupdate_url", "http://data.gdeltproject.org/gdeltv2/lastupdate.txt"
+                ),
+                "top_n": gdelt_cfg.get("top_n", 10),
+            },
+            max_instances=1,
+            coalesce=True,
+        )
+
+    if phish_cfg.get("enabled", True):
+        scheduler.add_job(
+            run_phish_tld_job,
+            "interval",
+            minutes=phish_cfg.get("interval_minutes", 60),
+            id="phish_tld",
+            name="OpenPhish TLD Aggregation",
+            kwargs={
+                "db": db,
+                "feed_url": phish_cfg.get("feed_url", "https://openphish.com/feed.txt"),
+                "top_n": phish_cfg.get("top_n", 5),
+            },
+            max_instances=1,
+            coalesce=True,
+        )
+
     scheduler.start()
     logger.info("Scheduler started (collection every %s min)", collection_interval)
 
     if firehose_cfg.get("enabled", True):
-        # Non-blocking task on the same asyncio loop as FastAPI + APScheduler.
-        firehose.start()
+        wikipedia_firehose.start()
         logger.info("Wikipedia firehose background task started")
+
+    if certstream_cfg.get("enabled", True):
+        certstream_monitor.start()
+        logger.info("CertStream keyword monitor background task started")
 
     logger.info("Running initial data collection...")
     await scheduled_collection()
@@ -149,8 +204,12 @@ async def lifespan(app: FastAPI):
     yield
 
     if firehose_cfg.get("enabled", True):
-        await firehose.stop()
+        await wikipedia_firehose.stop()
         logger.info("Wikipedia firehose stopped")
+
+    if certstream_cfg.get("enabled", True):
+        await certstream_monitor.stop()
+        logger.info("CertStream keyword monitor stopped")
 
     scheduler.shutdown()
     await db.close()

@@ -2,7 +2,8 @@
 Cross-domain correlation finder.
 The "secret sauce" — connects weather to markets, news to social trends, etc.
 """
-from typing import List, Dict, Tuple
+
+from typing import List, Dict
 from collections import defaultdict
 from datetime import datetime
 from core.models import Insight, SeverityLevel
@@ -34,6 +35,10 @@ class CorrelationAnalyzer(BaseAnalyzer):
         # ── Analysis 3: Cross-cluster Domain Bleed ──
         cluster_insights = await self._correlate_clusters()
         insights.extend(cluster_insights)
+
+        # ── Analysis 4: Global Streams Correlation ──
+        global_stream_insights = self._correlate_global_extremes(data_items)
+        insights.extend(global_stream_insights)
 
         return insights
 
@@ -69,7 +74,9 @@ class CorrelationAnalyzer(BaseAnalyzer):
                 cat_b = categories[j]
 
                 # Get shared dates
-                shared_dates = sorted(set(daily_counts[cat_a].keys()) & set(daily_counts[cat_b].keys()))
+                shared_dates = sorted(
+                    set(daily_counts[cat_a].keys()) & set(daily_counts[cat_b].keys())
+                )
                 if len(shared_dates) < self.min_data_points:
                     continue
 
@@ -79,25 +86,31 @@ class CorrelationAnalyzer(BaseAnalyzer):
                 correlation = self._pearson_correlation(series_a, series_b)
                 if correlation is not None and abs(correlation) >= self.min_correlation:
                     direction = "positive" if correlation > 0 else "inverse"
-                    insights.append(Insight(
-                        title=f"{direction.title()} correlation: {cat_a} ↔ {cat_b}",
-                        description=(f"Found {direction} correlation ({correlation:.2f}) between "
-                                     f"'{cat_a}' and '{cat_b}' data volumes over {len(shared_dates)} days. "
-                                     f"When one rises, the other {'rises' if correlation > 0 else 'falls'}."),
-                        insight_type="volume_correlation",
-                        confidence=abs(correlation),
-                        severity=SeverityLevel.MEDIUM if abs(correlation) < 0.8 else SeverityLevel.HIGH,
-                        domains=[cat_a, cat_b],
-                        metadata={
-                            "correlation": correlation,
-                            "data_points": len(shared_dates),
-                            "categories": [cat_a, cat_b]
-                        },
-                        recommended_actions=[
-                            f"Monitor {cat_a} and {cat_b} together for connected events",
-                            f"A spike in {cat_a} may predict movement in {cat_b}"
-                        ]
-                    ))
+                    insights.append(
+                        Insight(
+                            title=f"{direction.title()} correlation: {cat_a} ↔ {cat_b}",
+                            description=(
+                                f"Found {direction} correlation ({correlation:.2f}) between "
+                                f"'{cat_a}' and '{cat_b}' data volumes over {len(shared_dates)} days. "
+                                f"When one rises, the other {'rises' if correlation > 0 else 'falls'}."
+                            ),
+                            insight_type="volume_correlation",
+                            confidence=abs(correlation),
+                            severity=SeverityLevel.MEDIUM
+                            if abs(correlation) < 0.8
+                            else SeverityLevel.HIGH,
+                            domains=[cat_a, cat_b],
+                            metadata={
+                                "correlation": correlation,
+                                "data_points": len(shared_dates),
+                                "categories": [cat_a, cat_b],
+                            },
+                            recommended_actions=[
+                                f"Monitor {cat_a} and {cat_b} together for connected events",
+                                f"A spike in {cat_a} may predict movement in {cat_b}",
+                            ],
+                        )
+                    )
 
         return insights
 
@@ -107,7 +120,11 @@ class CorrelationAnalyzer(BaseAnalyzer):
 
         # Separate finance and non-finance items
         finance_items = [i for i in data_items if i.get("category") == "finance"]
-        news_items = [i for i in data_items if i.get("category") in ("world_news", "technology", "social")]
+        news_items = [
+            i
+            for i in data_items
+            if i.get("category") in ("world_news", "technology", "social")
+        ]
 
         if len(finance_items) < 3 or len(news_items) < 3:
             return insights
@@ -119,8 +136,9 @@ class CorrelationAnalyzer(BaseAnalyzer):
             if isinstance(meta, str):
                 try:
                     import json
+
                     meta = json.loads(meta)
-                except:
+                except Exception:
                     continue
             change = meta.get("change_pct", None)
             date = meta.get("date", "")
@@ -131,26 +149,31 @@ class CorrelationAnalyzer(BaseAnalyzer):
             return insights
 
         # Check if negative sentiment days correlate with negative market days
-        avg_daily_change = {date: sum(changes) / len(changes)
-                           for date, changes in daily_changes.items()}
+        avg_daily_change = {
+            date: sum(changes) / len(changes) for date, changes in daily_changes.items()
+        }
 
         negative_market_days = [d for d, c in avg_daily_change.items() if c < -1.0]
         if negative_market_days:
-            insights.append(Insight(
-                title=f"Market decline detected: {len(negative_market_days)} day(s)",
-                description=(f"Found {len(negative_market_days)} day(s) with average market decline > 1%. "
-                             f"Days: {', '.join(negative_market_days[:5])}. "
-                             f"Cross-referencing with news sentiment for correlation."),
-                insight_type="market_sentiment_correlation",
-                confidence=0.6,
-                severity=SeverityLevel.HIGH,
-                domains=["finance", "world_news"],
-                metadata={"negative_days": negative_market_days[:5]},
-                recommended_actions=[
-                    "Check news sentiment on these dates",
-                    "This pattern may indicate sentiment-driven market moves"
-                ]
-            ))
+            insights.append(
+                Insight(
+                    title=f"Market decline detected: {len(negative_market_days)} day(s)",
+                    description=(
+                        f"Found {len(negative_market_days)} day(s) with average market decline > 1%. "
+                        f"Days: {', '.join(negative_market_days[:5])}. "
+                        f"Cross-referencing with news sentiment for correlation."
+                    ),
+                    insight_type="market_sentiment_correlation",
+                    confidence=0.6,
+                    severity=SeverityLevel.HIGH,
+                    domains=["finance", "world_news"],
+                    metadata={"negative_days": negative_market_days[:5]},
+                    recommended_actions=[
+                        "Check news sentiment on these dates",
+                        "This pattern may indicate sentiment-driven market moves",
+                    ],
+                )
+            )
 
         return insights
 
@@ -159,34 +182,126 @@ class CorrelationAnalyzer(BaseAnalyzer):
         insights = []
         if not self.db:
             return insights
-            
+
         recent_clusters = await self.db.get_recent_topic_clusters(days=2, limit=20)
-        
+
         for cluster in recent_clusters:
             active_domains = cluster.get("active_domains", [])
             size = cluster.get("size", 0)
-            
+
             # Domain Bleed: Cluster spans multiple distinct categories
             if len(active_domains) > 1 and size >= self.min_data_points:
-                insights.append(Insight(
-                    title=f"Domain Bleed: {cluster.get('name')}",
-                    description=(f"Topic '{cluster.get('name')}' is crossing boundaries and is active across "
-                                 f"{len(active_domains)} distinct domains: {', '.join(active_domains)}. "
-                                 f"This indicates a pervasive real-world event affecting multiple sectors."),
-                    insight_type="domain_bleed",
-                    confidence=min(0.5 + (len(active_domains) * 0.1), 0.95),
-                    severity=SeverityLevel.HIGH if len(active_domains) >= 3 else SeverityLevel.MEDIUM,
-                    domains=active_domains,
-                    metadata={
-                        "cluster_id": cluster.get("id"),
-                        "size": size,
-                        "base_category": cluster.get("base_category")
-                    },
-                    recommended_actions=[
-                        f"Investigate root cause connecting these domains",
-                        "Look for cascading effects"
-                    ]
-                ))
+                insights.append(
+                    Insight(
+                        title=f"Domain Bleed: {cluster.get('name')}",
+                        description=(
+                            f"Topic '{cluster.get('name')}' is crossing boundaries and is active across "
+                            f"{len(active_domains)} distinct domains: {', '.join(active_domains)}. "
+                            f"This indicates a pervasive real-world event affecting multiple sectors."
+                        ),
+                        insight_type="domain_bleed",
+                        confidence=min(0.5 + (len(active_domains) * 0.1), 0.95),
+                        severity=SeverityLevel.HIGH
+                        if len(active_domains) >= 3
+                        else SeverityLevel.MEDIUM,
+                        domains=active_domains,
+                        metadata={
+                            "cluster_id": cluster.get("id"),
+                            "size": size,
+                            "base_category": cluster.get("base_category"),
+                        },
+                        recommended_actions=[
+                            "Investigate root cause connecting these domains",
+                            "Look for cascading effects",
+                        ],
+                    )
+                )
+        return insights
+
+    def _correlate_global_extremes(self, data_items: List[dict]) -> List[Insight]:
+        """Detect extreme events from global feeds and correlate with general activity."""
+        insights = []
+
+        for item in data_items:
+            meta = item.get("metadata", {})
+            if isinstance(meta, str):
+                try:
+                    import json
+
+                    meta = json.loads(meta)
+                except Exception:
+                    continue
+
+            pipeline = meta.get("pipeline")
+
+            if pipeline == "certstream_keyword_monitor":
+                counts = meta.get("counts", {})
+                for kw, count in counts.items():
+                    if count >= 10:  # Spike threshold
+                        insights.append(
+                            Insight(
+                                title=f"CertStream Spike: '{kw}' ({count} hits)",
+                                description=f"Detected surge in SSL certificate registrations containing the keyword '{kw}'. This may indicate a coordinated phishing campaign or massive infrastructure rollout.",
+                                insight_type="global_stream_spike",
+                                confidence=0.9,
+                                severity=SeverityLevel.HIGH
+                                if kw in ["login", "bank", "crypto"]
+                                else SeverityLevel.MEDIUM,
+                                domains=["technology", "security"],
+                                metadata={"keyword": kw, "count": count},
+                                recommended_actions=[
+                                    "Cross-reference with OpenPhish feeds",
+                                    f"Monitor network traffic to newly created '{kw}' domains",
+                                ],
+                            )
+                        )
+
+            elif pipeline == "openphish_tld_aggregation":
+                top_tlds = meta.get("top_tlds", [])
+                if top_tlds and top_tlds[0].get("count", 0) > 2:
+                    top_tld = top_tlds[0]["tld"]
+                    insights.append(
+                        Insight(
+                            title=f"Phishing TLD Abuse: {top_tld}",
+                            description=f"The TLD '{top_tld}' is currently highly abused for phishing attacks in this window. Threat actors are actively utilizing this namespace.",
+                            insight_type="threat_intelligence",
+                            confidence=0.85,
+                            severity=SeverityLevel.HIGH,
+                            domains=["technology", "security"],
+                            metadata={
+                                "top_tld": top_tld,
+                                "count": top_tlds[0].get("count"),
+                            },
+                            recommended_actions=[
+                                f"Update threat feeds and SIEM filters for '{top_tld}'",
+                                "Alert end-users about suspicious links",
+                            ],
+                        )
+                    )
+
+            elif pipeline == "gdelt_extremes":
+                metric_group = meta.get("metric_group", "")
+                events = meta.get("events", [])
+                if "Low" in metric_group and events:  # Tone Low or Goldstein Low
+                    insights.append(
+                        Insight(
+                            title=f"GDELT Global Instability: {metric_group}",
+                            description=f"Detected {len(events)} highly negative global events in the latest 15-minute window via GDELT ({metric_group}).",
+                            insight_type="global_event_extreme",
+                            confidence=0.8,
+                            severity=SeverityLevel.HIGH,
+                            domains=["world_news", "finance"],
+                            metadata={
+                                "metric_group": metric_group,
+                                "event_count": len(events),
+                            },
+                            recommended_actions=[
+                                "Monitor financial indexes for volatility",
+                                "Look for correlated social media sentiment cascades",
+                            ],
+                        )
+                    )
+
         return insights
 
     @staticmethod
