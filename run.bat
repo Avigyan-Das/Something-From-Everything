@@ -54,9 +54,8 @@ pause
 exit /b 1
 
 :PY_FOUND
-set "PY_CMD=\"%PY_EXE%\" %PY_ARGS%"
 
-echo [1/3] Starting KoboldCpp LLM Server...
+echo [1/4] Starting KoboldCpp LLM Server...
 if exist "C:\Users\User\Desktop\hp\backend\koboldcpp.exe" (
     start "KoboldCpp" cmd /k "C:\Users\User\Desktop\hp\backend\koboldcpp.exe --model C:\Users\User\Desktop\hp\qwen2.5-3b-instruct-q4_k_m.gguf --port 5001"
 ) else (
@@ -66,8 +65,11 @@ if exist "C:\Users\User\Desktop\hp\backend\koboldcpp.exe" (
 echo Waiting for LLM to initialize...
 timeout /t 5 /nobreak > nul
 
-echo [2/3] Starting Backend Server...
-start "SFE Backend" cmd /k "cd /d \"\"%ROOT%\"\" && %PY_CMD% main.py"
+echo [2/4] Installing dependencies...
+"%PY_EXE%" %PY_ARGS% -m pip install -r requirements.txt >nul
+
+echo [3/4] Starting Backend Server...
+start "SFE Backend" /D "%ROOT%" cmd /k ""%PY_EXE%" %PY_ARGS% main.py"
 
 echo Waiting for backend to open port 8000...
 set "READY=0"
@@ -81,7 +83,7 @@ for /L %%I in (1,1,40) do (
 )
 :BACKEND_READY
 
-echo [3/3] Launching Dashboard in Chrome...
+echo [4/4] Launching Dashboard in Chrome...
 if "%READY%"=="1" (
     start chrome http://localhost:8000
 ) else (

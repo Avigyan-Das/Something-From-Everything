@@ -32,7 +32,7 @@ def set_dependencies(db, orchestrator, collectors, llm):
 # ─── Data Endpoints ──────────────────────────────────────────────
 
 @router.get("/data")
-async def get_data(limit: int = Query(50, ge=1, le=200),
+async def get_data(limit: int = Query(500, ge=1, le=1500),
                    offset: int = Query(0, ge=0),
                    source: Optional[str] = None,
                    category: Optional[str] = None):

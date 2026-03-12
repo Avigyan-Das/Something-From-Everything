@@ -297,8 +297,8 @@ async function loadData() {
     toast('Loading intelligence matrix…', 'info');
 
     const [dataRes, insightRes, statsRes] = await Promise.all([
-        api('/api/data?limit=200'),
-        api('/api/insights?limit=30'),
+        api('/api/data?limit=1000'),
+        api('/api/insights?limit=100'),
         api('/api/stats')
     ]);
 
