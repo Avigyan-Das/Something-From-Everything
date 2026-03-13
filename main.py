@@ -126,7 +126,7 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("KoboldCpp not available, agentic features disabled")
 
-    set_dependencies(db, orchestrator, collectors, llm)
+    set_dependencies(db, orchestrator, collectors, llm, config)
 
     collection_interval = sources_cfg.get("rss", {}).get("interval_minutes", 30)
     scheduler.add_job(

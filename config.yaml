@@ -9,6 +9,10 @@ server:
 database:
   path: "data/sfe.db"
 
+dashboard:
+  fetch_limit: 300
+  max_fetch_limit: 2500
+
 # Real-time firehose configuration
 firehose:
   enabled: true

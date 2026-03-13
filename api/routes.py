@@ -18,21 +18,32 @@ _db = None
 _orchestrator = None
 _collectors = None
 _llm = None
+_config = {}
 _ws_clients: List[WebSocket] = []
 
 
-def set_dependencies(db, orchestrator, collectors, llm):
-    global _db, _orchestrator, _collectors, _llm
+def set_dependencies(db, orchestrator, collectors, llm, config=None):
+    global _db, _orchestrator, _collectors, _llm, _config
     _db = db
     _orchestrator = orchestrator
     _collectors = collectors
     _llm = llm
+    _config = config or {}
 
 
-# ─── Data Endpoints ──────────────────────────────────────────────
+def _get_dashboard_limits() -> tuple[int, int]:
+    dashboard_cfg = _config.get("dashboard", {}) if isinstance(_config, dict) else {}
+    default_limit = int(dashboard_cfg.get("fetch_limit", 300))
+    max_limit = int(dashboard_cfg.get("max_fetch_limit", 2000))
+    default_limit = max(1, default_limit)
+    max_limit = max(default_limit, max_limit)
+    return default_limit, max_limit
+
+
+# Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Data Endpoints Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 @router.get("/data")
-async def get_data(limit: int = Query(500, ge=1, le=1500),
+async def get_data(limit: int = Query(500, ge=1, le=5000),
                    offset: int = Query(0, ge=0),
                    source: Optional[str] = None,
                    category: Optional[str] = None):
@@ -42,6 +53,50 @@ async def get_data(limit: int = Query(500, ge=1, le=1500),
     return {"items": items, "count": len(items)}
 
 
+@router.get("/graph-data")
+async def get_graph_data(
+    limit: int = Query(300, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
+    source: Optional[str] = None,
+    category: Optional[str] = None,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    insights_only: bool = Query(False),
+    insight_limit: int = Query(300, ge=1, le=500),
+    random: bool = Query(False),
+):
+    """Return filtered graph data with explicit insight -> data connections."""
+    default_limit, max_limit = _get_dashboard_limits()
+    effective_limit = min(limit or default_limit, max_limit)
+
+    graph_data = await _db.get_graph_dataset(
+        limit=effective_limit,
+        offset=offset,
+        max_limit=max_limit,
+        source=source,
+        category=category,
+        start_time=start_time,
+        end_time=end_time,
+        insights_only=insights_only,
+        insight_limit=insight_limit,
+        random=random,
+    )
+
+    sources = await _db.get_distinct_data_values("source")
+    categories = await _db.get_distinct_data_values("category")
+
+    return {
+        **graph_data,
+        "available_sources": sources,
+        "available_categories": categories,
+        "fetch_limits": {
+            "default": default_limit,
+            "max": max_limit,
+            "effective": effective_limit,
+        },
+    }
+
+
 @router.get("/data/recent")
 async def get_recent_data(hours: int = Query(24, ge=1, le=168)):
     """Get data items from the last N hours."""
@@ -49,7 +104,7 @@ async def get_recent_data(hours: int = Query(24, ge=1, le=168)):
     return {"items": items, "count": len(items)}
 
 
-# ─── Insights Endpoints ─────────────────────────────────────────
+# Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Insights Endpoints Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 @router.get("/insights")
 async def get_insights(limit: int = Query(50, ge=1, le=200),
@@ -61,7 +116,7 @@ async def get_insights(limit: int = Query(50, ge=1, le=200),
     return {"insights": insights, "count": len(insights)}
 
 
-# ─── Alerts Endpoints ────────────────────────────────────────────
+# Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Alerts Endpoints Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 @router.get("/alerts")
 async def get_alerts(limit: int = Query(50, ge=1, le=200),
@@ -78,7 +133,7 @@ async def acknowledge_alert(alert_id: str):
     return {"status": "acknowledged"}
 
 
-# ─── Action Endpoints ────────────────────────────────────────────
+# Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Action Endpoints Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 @router.post("/collect/now")
 async def trigger_collection():
@@ -119,7 +174,7 @@ async def trigger_analysis():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ─── Stats & Status ─────────────────────────────────────────────
+# Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Stats & Status Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 @router.get("/stats")
 async def get_stats():
@@ -149,7 +204,7 @@ async def get_sources():
     return {"sources": sources}
 
 
-# ─── WebSocket ───────────────────────────────────────────────────
+# Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ WebSocket Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 async def ws_endpoint(websocket: WebSocket):
     """WebSocket endpoint for live dashboard updates."""

@@ -6,7 +6,7 @@ import aiosqlite
 import json
 import os
 from contextlib import asynccontextmanager
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Set
 from core.models import DataItem, Insight, Alert, AgentAction, TopicCluster
 
 
@@ -220,6 +220,219 @@ class Database:
         rows = await self._fetch_all(query, tuple(params))
         return [self._row_to_dict(row) for row in rows]
 
+    async def get_distinct_data_values(self, field: str) -> List[str]:
+        """Return sorted distinct values for a known data_items column."""
+        allowed = {"source", "category"}
+        if field not in allowed:
+            return []
+
+        rows = await self._fetch_all(
+            f"SELECT DISTINCT {field} AS value FROM data_items WHERE {field} IS NOT NULL ORDER BY value ASC"
+        )
+        return [row["value"] for row in rows if row["value"]]
+
+    async def get_graph_dataset(
+        self,
+        *,
+        limit: int = 300,
+        offset: int = 0,
+        max_limit: int = 1500,
+        source: Optional[str] = None,
+        category: Optional[str] = None,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+        insights_only: bool = False,
+        insight_limit: int = 300,
+        random: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Return graph-safe slices of data + connected insights.
+        Data retrieval stays indexed by source/category/collected_at filters.
+        """
+        safe_limit = max(1, min(limit, max_limit))
+        safe_offset = max(0, offset)
+        safe_insight_limit = max(1, min(insight_limit, 500))
+
+        items: List[dict] = []
+        total_items = 0
+
+        # Build reusable data filters so SQLite can use existing indexes.
+        where_clauses = []
+        where_params: List[Any] = []
+        if source:
+            where_clauses.append("source = ?")
+            where_params.append(source)
+        if category:
+            where_clauses.append("category = ?")
+            where_params.append(category)
+        if start_time:
+            where_clauses.append("collected_at >= ?")
+            where_params.append(start_time)
+        if end_time:
+            where_clauses.append("collected_at <= ?")
+            where_params.append(end_time)
+
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
+        candidate_insights = await self._fetch_candidate_insights(limit=safe_insight_limit)
+        connected_item_ids = self._collect_supporting_ids(candidate_insights)
+        connected_categories = self._collect_domains(candidate_insights)
+
+        if insights_only:
+            items, total_items = await self._get_connected_data_items(
+                connected_item_ids=connected_item_ids,
+                connected_categories=connected_categories,
+                where_sql=where_sql,
+                where_params=where_params,
+                limit=safe_limit,
+                offset=safe_offset,
+            )
+        else:
+            if random:
+                items = await self._fetch_all(
+                    f"""SELECT * FROM data_items
+                        {where_sql}
+                        ORDER BY RANDOM()
+                        LIMIT ? OFFSET ?""",
+                    tuple(where_params + [safe_limit, safe_offset]),
+                )
+            else:
+                items = await self._fetch_all(
+                    f"""SELECT * FROM data_items
+                        {where_sql}
+                        ORDER BY collected_at DESC
+                        LIMIT ? OFFSET ?""",
+                    tuple(where_params + [safe_limit, safe_offset]),
+                )
+            total_row = await self._fetch_one(
+                f"SELECT COUNT(*) AS total FROM data_items {where_sql}",
+                tuple(where_params),
+            )
+            total_items = int(total_row["total"]) if total_row else 0
+            items = [self._row_to_dict(row) for row in items]
+
+        graph_payload = self._build_graph_payload(items, candidate_insights)
+        has_more = (safe_offset + len(items)) < total_items
+        graph_payload["total_items"] = total_items
+        graph_payload["offset"] = safe_offset
+        graph_payload["limit"] = safe_limit
+        graph_payload["next_offset"] = safe_offset + len(items)
+        graph_payload["has_more"] = has_more
+        return graph_payload
+
+    async def _fetch_candidate_insights(self, limit: int) -> List[dict]:
+        rows = await self._fetch_all(
+            """SELECT * FROM insights
+               ORDER BY created_at DESC
+               LIMIT ?""",
+            (limit,),
+        )
+        return [self._deserialize_insight(self._row_to_dict(row)) for row in rows]
+
+    async def _get_connected_data_items(
+        self,
+        *,
+        connected_item_ids: Set[str],
+        connected_categories: Set[str],
+        where_sql: str,
+        where_params: List[Any],
+        limit: int,
+        offset: int,
+    ) -> tuple[List[dict], int]:
+        id_list = list(connected_item_ids)[:900]  # Stay under SQLite param limits.
+        params: List[Any] = list(where_params)
+        connected_predicates = []
+
+        if id_list:
+            placeholders = ",".join(["?"] * len(id_list))
+            connected_predicates.append(f"id IN ({placeholders})")
+            params.extend(id_list)
+
+        if connected_categories:
+            cat_list = list(connected_categories)
+            placeholders = ",".join(["?"] * len(cat_list))
+            connected_predicates.append(f"category IN ({placeholders})")
+            params.extend(cat_list)
+
+        if not connected_predicates:
+            return [], 0
+
+        connection_sql = "(" + " OR ".join(connected_predicates) + ")"
+        filter_sql = where_sql
+        if filter_sql:
+            filter_sql = f"{filter_sql} AND {connection_sql}"
+        else:
+            filter_sql = f"WHERE {connection_sql}"
+
+        rows = await self._fetch_all(
+            f"""SELECT * FROM data_items
+                {filter_sql}
+                ORDER BY collected_at DESC
+                LIMIT ? OFFSET ?""",
+            tuple(params + [limit, offset]),
+        )
+        total_row = await self._fetch_one(
+            f"SELECT COUNT(*) AS total FROM data_items {filter_sql}",
+            tuple(params),
+        )
+        total_items = int(total_row["total"]) if total_row else 0
+        return [self._row_to_dict(row) for row in rows], total_items
+
+    def _collect_supporting_ids(self, insights: List[dict]) -> Set[str]:
+        ids: Set[str] = set()
+        for insight in insights:
+            for value in insight.get("supporting_data", []):
+                if value:
+                    ids.add(str(value))
+        return ids
+
+    def _collect_domains(self, insights: List[dict]) -> Set[str]:
+        domains: Set[str] = set()
+        for insight in insights:
+            for value in insight.get("domains", []):
+                if value:
+                    domains.add(str(value))
+        return domains
+
+    def _build_graph_payload(self, items: List[dict], candidate_insights: List[dict]) -> Dict[str, Any]:
+        item_map = {str(item.get("id")): item for item in items if item.get("id")}
+        items_by_category: Dict[str, List[str]] = {}
+        for item in items:
+            item_id = str(item.get("id", ""))
+            if not item_id:
+                continue
+            cat = str(item.get("category", "general"))
+            items_by_category.setdefault(cat, []).append(item_id)
+
+        insights: List[dict] = []
+        connections: Dict[str, List[str]] = {}
+        for insight in candidate_insights:
+            insight_id = str(insight.get("id", ""))
+            if not insight_id:
+                continue
+
+            linked_ids = []
+            for item_id in insight.get("supporting_data", []):
+                key = str(item_id)
+                if key in item_map:
+                    linked_ids.append(key)
+
+            # Fallback: if no explicit supporting ids are available, link by shared domains.
+            if not linked_ids:
+                for domain in insight.get("domains", []):
+                    linked_ids.extend(items_by_category.get(str(domain), []))
+
+            deduped_ids = list(dict.fromkeys(linked_ids))
+            if deduped_ids:
+                connections[insight_id] = deduped_ids
+                insights.append(insight)
+
+        return {
+            "items": items,
+            "insights": insights,
+            "connections": connections,
+        }
+
     async def get_recent_data_items(self, hours: int = 24, limit: int = 500) -> List[dict]:
         rows = await self._fetch_all(
             """SELECT * FROM data_items
@@ -266,16 +479,7 @@ class Database:
         params.extend([limit, offset])
 
         rows = await self._fetch_all(query, tuple(params))
-        results = []
-        for row in rows:
-            d = self._row_to_dict(row)
-            for field in ["supporting_data", "domains", "recommended_actions", "metadata"]:
-                if isinstance(d.get(field), str):
-                    try:
-                        d[field] = json.loads(d[field])
-                    except json.JSONDecodeError:
-                        pass
-            results.append(d)
+        results = [self._deserialize_insight(self._row_to_dict(row)) for row in rows]
         return results
 
     async def store_alert(self, alert: Alert) -> str:
@@ -418,6 +622,15 @@ class Database:
         if row is None:
             return {}
         return dict(row)
+
+    def _deserialize_insight(self, insight: dict) -> dict:
+        for field in ["supporting_data", "domains", "recommended_actions", "metadata"]:
+            if isinstance(insight.get(field), str):
+                try:
+                    insight[field] = json.loads(insight[field])
+                except json.JSONDecodeError:
+                    insight[field] = [] if field != "metadata" else {}
+        return insight
 
     async def close(self):
         while not self._read_pool.empty():

@@ -45,7 +45,7 @@ class AgentOrchestrator:
 
         self.last_analysis: Optional[datetime] = None
 
-    async def run_full_pipeline(self) -> dict:
+    async def run_full_pipeline(self, filters: dict = None) -> dict:
         """Execute the full analytics + agent pipeline."""
         start_time = datetime.utcnow()
         results = {
@@ -57,8 +57,20 @@ class AgentOrchestrator:
         }
 
         try:
-            # Step 1: Get recent data
-            data_items = await self.db.get_recent_data_items(hours=48, limit=500)
+            filters = filters or {}
+            # Step 1: Get recent data based on filters or default
+            if filters:
+                data_items = await self.db.get_data_items(
+                    limit=filters.get("limit", 300),
+                    source=filters.get("source"),
+                    category=filters.get("category"),
+                    start_time=filters.get("start_time"),
+                    end_time=filters.get("end_time"),
+                    random=filters.get("random", False)
+                )
+            else:
+                data_items = await self.db.get_recent_data_items(hours=48, limit=500)
+                
             results["data_analyzed"] = len(data_items)
 
             if not data_items:
