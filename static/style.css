@@ -623,7 +623,185 @@ body {
     color: var(--text3);
 }
 
-/* â”€â”€â”€ Responsive â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ─── Tabs ────────────────────────────────────────────────── */
+
+.tab-nav {
+    display: flex;
+    gap: 8px;
+    margin-left: 20px;
+    padding-left: 20px;
+    border-left: 1px solid var(--border);
+}
+
+.tab-btn {
+    background: none;
+    border: none;
+    color: var(--text2);
+    font-family: inherit;
+    font-size: .85rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 6px 12px;
+    border-radius: 8px;
+    transition: var(--fast);
+}
+
+.tab-btn:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, .05);
+}
+
+.tab-btn.active {
+    color: var(--cyan);
+    background: rgba(0, 212, 255, .1);
+}
+
+.tab-content {
+    display: none;
+    width: 100%;
+    height: 100%;
+    padding-top: 100px; /* Increased to ensure clearance of the fixed top-bar */
+    position: relative;
+    z-index: 10;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* ─── Technical Console ─────────────────────────────────────── */
+
+.tech-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: row; /* Horizontal */
+    padding: 0 24px 24px;
+    gap: 24px;
+    overflow: hidden;
+}
+
+.tech-sidebar {
+    width: 300px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 24px 20px;
+    gap: 30px;
+    height: 100%;
+}
+
+.sidebar-head h3 {
+    font-size: .95rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+    color: var(--text);
+}
+
+.tech-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 100%;
+}
+
+.control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.control-group span {
+    font-size: .65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text3);
+}
+
+.tech-input,
+.tech-select {
+    width: 100%; /* Fill sidebar */
+    background: rgba(255, 255, 255, .05);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 10px 14px;
+    font-size: .82rem;
+    outline: none;
+    transition: var(--fast);
+}
+
+.tech-input:focus,
+.tech-select:focus {
+    border-color: var(--cyan);
+    background: rgba(255, 255, 255, .08);
+}
+
+.tech-controls .btn {
+    width: 100%;
+    justify-content: center;
+}
+
+.tech-meta {
+    font-size: .7rem;
+    color: var(--text3);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+}
+
+.tech-table-wrap {
+    flex: 1; /* Take remaining width */
+    overflow-y: auto;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+}
+
+.tech-table-wrap::-webkit-scrollbar {
+    width: 6px;
+}
+
+.tech-table-wrap::-webkit-scrollbar-thumb {
+    background: var(--border-hi);
+    border-radius: 10px;
+}
+
+#tech-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .85rem;
+}
+
+#tech-table th {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--glass-hi);
+    backdrop-filter: blur(10px);
+    padding: 14px 20px;
+    text-align: left;
+    font-weight: 700;
+    color: var(--text2);
+    text-transform: uppercase;
+    font-size: .7rem;
+    letter-spacing: 1px;
+    border-bottom: 1px solid var(--border);
+}
+
+#tech-table td {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    vertical-align: top;
+    line-height: 1.5;
+}
+
+#tech-table tr:hover td {
+    background: rgba(255, 255, 255, .02);
+}
+
+/* ─── Responsive ──────────────────────────────────────────── */
 
 @media(max-width:768px) {
     #legend-panel {

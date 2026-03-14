@@ -28,7 +28,8 @@ document.addEventListener("DOMContentLoaded", () => {
     buildGraph();
     connectWS();
     bindFilterControls();
-    loadData({ append: false });
+    // loadData({ append: false }); // REMOVED: Do not load data on startup
+    refreshStats(); // Initial stats sync
     setInterval(() => refreshStats(), 60000);
 });
 
@@ -456,6 +457,19 @@ async function loadData({ append }) {
 }
 
 function applyFilters() {
+    const filters = getFilters();
+    if (filters.timeframe === "all") {
+        graphState.items.clear();
+        graphState.insights.clear();
+        graphState.connections.clear();
+        graphState.offset = 0;
+        graphState.hasMore = false;
+        rehydrateGraphNodes();
+        const meta = document.getElementById("filter-meta");
+        if (meta) meta.textContent = "Offset 0 (Graph cleared)";
+        toast("Graph cleared. Select a timeframe to load data.", "info");
+        return;
+    }
     graphState.offset = 0;
     loadData({ append: false });
 }
