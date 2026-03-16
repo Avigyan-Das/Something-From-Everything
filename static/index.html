@@ -5,15 +5,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Something from Everything — Intelligence Dashboard">
-    <title>Something from Everything — Intelligence Dashboard</title>
+    <title>Something from Everything — Intelligence Nexus</title>
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔮</text></svg>">
 
-    <!-- Fonts -->
+    <!-- Fonts: Plus Jakarta Sans for UI, JetBrains Mono for Data -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
-        rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
     <!-- Three.js + 3D Force Graph -->
     <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
@@ -24,203 +23,244 @@
 </head>
 
 <body>
+    <!-- ═══ Noise Overlay ═══════════════════════ -->
+    <div class="noise-overlay"></div>
 
-    <!-- ═══ Top Bar ═══════════════════════ -->
-    <header id="top-bar">
-        <div class="top-left">
+    <!-- ═══ Global Header ═══════════════════════ -->
+    <header id="top-bar" class="glass-nav">
+        <div class="nav-left">
             <div class="brand">
-                <span class="brand-icon">🔮</span>
-                <div>
-                    <div class="brand-name">Something from Everything</div>
-                    <div class="brand-sub">Platform v2</div>
+                <div class="brand-orb"></div>
+                <div class="brand-text">
+                    <h1 class="brand-name">Intelligence Nexus</h1>
+                    <p class="brand-sub">Something from Everything v2.5</p>
                 </div>
             </div>
-            <div class="tab-nav">
-                <button class="tab-btn active" onclick="switchTheme('visual')">Visual Matrix</button>
-                <button class="tab-btn" onclick="switchTheme('technical')">Technical Console</button>
-            </div>
+            <nav class="tab-nav">
+                <button class="tab-btn active" onclick="switchTheme('visual')" data-tab="visual">
+                    <span class="btn-inner">Visual Matrix</span>
+                </button>
+                <button class="tab-btn" onclick="switchTheme('technical')" data-tab="technical">
+                    <span class="btn-inner">Technical Console</span>
+                </button>
+            </nav>
         </div>
-        <div class="top-right">
-            <div class="pill" id="llm-pill">
-                <span class="dot offline" id="llm-dot"></span>
+        
+        <div class="nav-right">
+            <div class="status-pill" id="llm-pill">
+                <div class="status-dot offline" id="llm-dot"></div>
                 <span id="llm-text">LLM Offline</span>
             </div>
-            <div class="pill" id="ws-pill">
-                <span class="dot offline" id="ws-dot"></span>
+            <div class="status-pill" id="ws-pill">
+                <div class="status-dot offline" id="ws-dot"></div>
                 <span id="ws-text">Disconnected</span>
             </div>
         </div>
     </header>
 
-
     <!-- ═══ TAB 1: Visual Matrix ═══════════════════════ -->
-    <div id="tab-visual" class="tab-content active">
-        <!-- 3D Canvas wrapper -->
+    <main id="tab-visual" class="tab-content active">
+        <!-- 3D Canvas -->
         <div id="3d-graph"></div>
 
-        <!-- Left: Stats (Persists across both, but anchored visually here) -->
-        <div id="stats-panel" class="glass-panel">
-            <div class="mini-stat">
-                <span class="mini-label">DATA NODES</span>
-                <span class="mini-value" id="stat-data">0</span>
+        <!-- Left: Intelligence Stats -->
+        <section id="stats-panel" class="floating-panel glass-panel">
+            <div class="panel-header">
+                <span class="panel-title">System Metrics</span>
             </div>
-            <div class="mini-stat">
-                <span class="mini-label">INSIGHTS</span>
-                <span class="mini-value" id="stat-insights">0</span>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <span class="stat-label">Data Nodes</span>
+                    <span class="stat-value" id="stat-data">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Insights</span>
+                    <span class="stat-value" id="stat-insights">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Active Alerts</span>
+                    <span class="stat-value" id="stat-alerts">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Correlations</span>
+                    <span class="stat-value" id="stat-links">0</span>
+                </div>
             </div>
-            <div class="mini-stat">
-                <span class="mini-label">ALERTS</span>
-                <span class="mini-value" id="stat-alerts">0</span>
-            </div>
-            <div class="mini-stat">
-                <span class="mini-label">LINKS</span>
-                <span class="mini-value" id="stat-links">0</span>
-            </div>
-        </div>
+        </section>
 
-        <!-- Left: Graph Filters -->
-        <div id="filters-panel" class="glass-panel">
-            <div class="filters-head">Graph Filters</div>
-            <label class="filter-line">
-                <span>Domain/Source</span>
-                <select id="filter-source">
-                    <option value="">All</option>
-                </select>
-            </label>
-            <label class="filter-line">
-                <span>Category</span>
-                <select id="filter-category">
-                    <option value="">All</option>
-                </select>
-            </label>
-            <label class="filter-line">
-                <span>Timeframe</span>
-                <select id="filter-timeframe">
-                    <option value="all" selected>All time (Select to load)</option>
-                    <option value="1h">Last 1 hour</option>
-                    <option value="6h">Last 6 hours</option>
-                    <option value="24h">Last 24 hours</option>
-                    <option value="7d">Last 7 days</option>
-                    <option value="30d">Last 30 days</option>
-                </select>
-            </label>
-            <label class="filter-line">
-                <span>Number of data</span>
-                <input id="filter-limit" type="number" min="1" max="2500" step="25" value="300">
-            </label>
-            <label class="filter-check">
-                <input id="filter-random" type="checkbox">
-                <span>Random Selection</span>
-            </label>
-            <label class="filter-check">
-                <input id="filter-insights-only" type="checkbox">
-                <span>Only connected data</span>
-            </label>
-            <div class="filter-actions">
-                <button class="btn btn-outline" id="btn-apply-filters" onclick="applyFilters()">Apply Filters</button>
-                <button class="btn btn-ghost" id="btn-load-more" onclick="loadMore()">Load More</button>
+        <!-- Left: Filters & Parameters -->
+        <aside id="filters-panel" class="floating-panel glass-panel">
+            <div class="panel-header">
+                <span class="panel-title">Graph Parameters</span>
             </div>
-            <div id="filter-meta">Offset 0</div>
-        </div>
-
-        <!-- Bottom Left: Actions -->
-        <div id="actions-panel" class="glass-panel">
-            <button class="btn btn-outline" id="btn-analyze" onclick="doAnalyze()">🧠 Form Connections & Find Patterns</button>
-            <button class="btn btn-ghost" onclick="reloadGraph()">🔄 Reload View</button>
-            <button class="btn btn-ghost" onclick="recenter()">🎯 Recenter</button>
-        </div>
-
-        <!-- Bottom Right: Legend -->
-        <div id="legend-panel" class="glass-panel">
-            <div class="legend-title">🧭 Node Types</div>
-            <div class="legend-grid">
-                <span class="lg-dot" style="background:#00d4ff;border-radius:50%"></span><span>RSS</span>
-                <span class="lg-dot" style="background:#ec4899"></span><span>Reddit</span>
-                <span class="lg-dot"
-                    style="background:#f59e0b;border-radius:50%;border:2px solid #f59e0b;background:transparent"></span><span>HackerNews</span>
-                <span class="lg-dot"
-                    style="background:#10b981;clip-path:polygon(50% 0%,0% 100%,100% 100%)"></span><span>Finance</span>
-                <span class="lg-dot" style="background:#a855f7;border-radius:50%"></span><span>Weather</span>
-                <span class="lg-dot" style="background:#39ff14;border-radius:2px"></span><span>CertStream</span>
-                <span class="lg-dot" style="background:#ff4500;border-radius:50%"></span><span>GDELT</span>
-                <span class="lg-dot" style="background:#8a2be2;border-radius:50%"></span><span>OpenPhish</span>
-                <span class="lg-dot lg-glow" style="background:#ef4444"></span><span>🔴 Critical</span>
-                <span class="lg-dot lg-glow" style="background:#f59e0b"></span><span>🟡 High</span>
-                <span class="lg-dot lg-glow" style="background:#00d4ff"></span><span>🔵 Medium</span>
-            </div>
-        </div>
-
-        <!-- Right: Detail Panel -->
-        <aside id="detail-panel">
-            <div class="detail-head">
-                <h3 id="detail-title">Node Details</h3>
-                <button class="btn-x" onclick="closeDetail()">✕</button>
-            </div>
-            <div id="detail-body" class="detail-body">
-                <p class="muted">Click any node in the 3D space to inspect it.</p>
+            <div class="filter-controls">
+                <div class="control-field">
+                    <label>Source / Domain</label>
+                    <div class="select-wrapper">
+                        <select id="filter-source">
+                            <option value="">All Streams</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="control-field">
+                    <label>Category</label>
+                    <div class="select-wrapper">
+                        <select id="filter-category">
+                            <option value="">All Categories</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="control-field">
+                    <label>Temporal Window</label>
+                    <div class="select-wrapper">
+                        <select id="filter-timeframe">
+                            <option value="all" selected>All Time (Load to start)</option>
+                            <option value="1h">Last Hour</option>
+                            <option value="6h">Last 6 Hours</option>
+                            <option value="24h">Last 24 Hours</option>
+                            <option value="7d">Last 7 Days</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="control-row">
+                    <div class="control-field">
+                        <label>Node Limit</label>
+                        <input id="filter-limit" type="number" min="1" max="2500" value="300">
+                    </div>
+                </div>
+                <div class="checkbox-row">
+                    <label class="nexus-checkbox">
+                        <input id="filter-random" type="checkbox">
+                        <span class="checkmark"></span>
+                        <span class="label-text">Random Sampling</span>
+                    </label>
+                    <label class="nexus-checkbox">
+                        <input id="filter-insights-only" type="checkbox">
+                        <span class="checkmark"></span>
+                        <span class="label-text">Correlated Only</span>
+                    </label>
+                </div>
+                <div class="panel-actions">
+                    <button class="btn btn-primary" id="btn-apply-filters" onclick="applyFilters()">Apply View</button>
+                    <button class="btn btn-ghost" id="btn-load-more" onclick="loadMore()">Expand Matrix</button>
+                </div>
+                <div id="filter-meta" class="panel-meta">Awaiting initialization...</div>
             </div>
         </aside>
-    </div> <!-- End Tab Visual -->
+
+        <!-- Bottom Left: Strategic Actions -->
+        <section id="actions-panel" class="floating-panel glass-panel">
+            <button class="btn btn-glow" id="btn-analyze" onclick="doAnalyze()">
+                <span class="btn-icon">🧠</span>
+                <span class="btn-label">Synthesize Patterns</span>
+            </button>
+            <div class="action-divider"></div>
+            <button class="btn btn-icon-only" onclick="reloadGraph()" title="Reload Graph">🔄</button>
+            <button class="btn btn-icon-only" onclick="recenter()" title="Recenter View">🎯</button>
+        </section>
+
+        <!-- Bottom Right: Taxonomy Legend -->
+        <section id="legend-panel" class="floating-panel glass-panel">
+            <div class="panel-header">
+                <span class="panel-title">Node Taxonomy</span>
+            </div>
+            <div class="legend-grid">
+                <div class="legend-item"><span class="dot rss"></span><span>RSS Stream</span></div>
+                <div class="legend-item"><span class="dot reddit"></span><span>Reddit Flux</span></div>
+                <div class="legend-item"><span class="dot hackernews"></span><span>Hacker Intel</span></div>
+                <div class="legend-item"><span class="dot finance"></span><span>Market Pulse</span></div>
+                <div class="legend-item"><span class="dot weather"></span><span>Meteo Data</span></div>
+                <div class="legend-item"><span class="dot certstream"></span><span>Network Ops</span></div>
+                <div class="legend-item"><span class="dot critical-glow"></span><span>Critical Alert</span></div>
+                <div class="legend-item"><span class="dot high-glow"></span><span>High Priority</span></div>
+            </div>
+        </section>
+
+        <!-- Detail Sidebar (Right) -->
+        <aside id="detail-panel" class="editorial-sidebar">
+            <div class="sidebar-inner">
+                <header class="sidebar-head">
+                    <div class="sidebar-title-row">
+                        <h3 id="detail-title-label">Intelligence Report</h3>
+                        <button class="close-sidebar" onclick="closeDetail()">✕</button>
+                    </div>
+                    <div class="sidebar-divider"></div>
+                </header>
+                <div id="detail-body" class="sidebar-body">
+                    <div class="empty-state">
+                        <div class="empty-icon">👁️</div>
+                        <p>Select a node in the 3D space to decrypt intelligence metadata.</p>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </main>
 
 
     <!-- ═══ TAB 2: Technical Console ═══════════════════════ -->
-    <div id="tab-technical" class="tab-content" style="display:none;">
-        <div class="tech-container">
-            <aside class="tech-sidebar glass-panel">
-                <div class="sidebar-head">
-                    <h3>Console Controls</h3>
-                    <div class="tech-meta" id="tech-meta">Showing 0 rows</div>
+    <main id="tab-technical" class="tab-content">
+        <div class="console-container">
+            <aside class="console-sidebar glass-panel">
+                <div class="panel-header">
+                    <span class="panel-title">Console Controls</span>
+                    <div class="tech-meta" id="tech-meta">0 Records</div>
                 </div>
                 
-                <div class="tech-controls">
-                    <label class="control-group">
-                        <span>Operations</span>
-                        <button class="btn btn-glow" id="btn-collect" onclick="doCollect()">⚡ Run Data Collection</button>
-                    </label>
+                <div class="console-controls">
+                    <div class="control-field">
+                        <label>Operations</label>
+                        <button class="btn btn-primary btn-full" id="btn-collect" onclick="doCollect()">⚡ Trigger Harvest</button>
+                    </div>
 
-                    <label class="control-group">
-                        <span>Search</span>
-                        <input type="text" id="tech-search" class="tech-input" placeholder="Search content..." onkeyup="filterTechTable()">
-                    </label>
+                    <div class="control-field">
+                        <label>Deep Search</label>
+                        <input type="text" id="tech-search" class="console-input" placeholder="Search decrypted content..." onkeyup="filterTechTable()">
+                    </div>
 
-                    <label class="control-group">
-                        <span>Source Filter</span>
-                        <select id="tech-filter-source" class="tech-select" onchange="filterTechTable()">
-                            <option value="">All Sources</option>
-                        </select>
-                    </label>
+                    <div class="control-field">
+                        <label>Origin Filter</label>
+                        <div class="select-wrapper">
+                            <select id="tech-filter-source" onchange="filterTechTable()">
+                                <option value="">All Origins</option>
+                            </select>
+                        </div>
+                    </div>
 
-                    <label class="control-group">
-                        <span>Category Filter</span>
-                        <select id="tech-filter-category" class="tech-select" onchange="filterTechTable()">
-                            <option value="">All Categories</option>
-                        </select>
-                    </label>
+                    <div class="control-field">
+                        <label>Category Filter</label>
+                        <div class="select-wrapper">
+                            <select id="tech-filter-category" onchange="filterTechTable()">
+                                <option value="">All Categories</option>
+                            </select>
+                        </div>
+                    </div>
 
-                    <button class="btn btn-outline" onclick="loadTableData()">Refresh Database</button>
+                    <button class="btn btn-outline btn-full" onclick="loadTableData()">Refresh Matrix</button>
                 </div>
             </aside>
 
-            <div class="tech-table-wrap glass-panel">
-                <table id="tech-table">
-                    <thead>
-                        <tr>
-                            <th width="15%">Time</th>
-                            <th width="15%">Source</th>
-                            <th width="15%">Category</th>
-                            <th width="45%">Content Summary</th>
-                            <th width="10%">Link</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tech-table-body">
-                        <!-- Populated by JS -->
-                    </tbody>
-                </table>
+            <div class="console-main glass-panel">
+                <div class="table-scroll">
+                    <table id="tech-table">
+                        <thead>
+                            <tr>
+                                <th class="col-time">Timestamp</th>
+                                <th class="col-source">Origin</th>
+                                <th class="col-cat">Category</th>
+                                <th class="col-content">Intelligence Summary</th>
+                                <th class="col-link">Source</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tech-table-body">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
-    </div> <!-- End Tab Technical -->
+    </main>
 
-    <!-- Toasts -->
+    <!-- UI Toasts -->
     <div id="toasts"></div>
 
     <script src="/static/app.js"></script>

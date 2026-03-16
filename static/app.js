@@ -1,6 +1,6 @@
 /**
- * Something from Everything - 3D Intelligence Dashboard
- * Full-screen interactive 3D force-directed graph.
+ * INTELLIGENCE NEXUS - Core Dashboard Engine
+ * Version 2.5.1 | Performance Optimized
  */
 
 let G = null;
@@ -21,17 +21,83 @@ const graphState = {
         effective: 300,
     },
     tab: "visual",
-    techData: [], // raw data for Technical Console table
+    techData: [],
 };
 
+// Theme-aligned Colors
+const THEME = {
+    cyan: "#00f3ff",
+    purple: "#7000ff",
+    crimson: "#ff0055",
+    amber: "#ffaa00",
+    green: "#00ff9d",
+    blue: "#0077ff",
+    pink: "#ec4899",
+    white: "#f0f0f5",
+    muted: "#55556a",
+};
+
+const SEV_COLORS = {
+    critical: 0xff0055,
+    high: 0xffaa00,
+    medium: 0x00f3ff,
+    low: 0x7000ff,
+    info: 0x55556a,
+};
+
+// ─── 3D Asset Cache (Performance Optimization) ─────────────
+const GEO_CACHE = {
+    rss: new THREE.SphereGeometry(3, 16, 16),
+    reddit: new THREE.BoxGeometry(4, 4, 4),
+    hackernews: new THREE.TorusGeometry(3, 0.8, 8, 16),
+    finance: new THREE.OctahedronGeometry(3.5),
+    weather: new THREE.IcosahedronGeometry(3.5),
+    scraper: new THREE.CylinderGeometry(0, 3, 6, 4),
+    insight: new THREE.SphereGeometry(10, 24, 24),
+    shield: new THREE.TorusGeometry(15, 0.4, 8, 40),
+};
+
+const MAT_CACHE = new Map();
+function getMaterial(color, wireframe = false, emissive = 0) {
+    const key = `${color}_${wireframe}_${emissive}`;
+    if (MAT_CACHE.has(key)) return MAT_CACHE.get(key);
+    
+    const mat = wireframe 
+        ? new THREE.MeshBasicMaterial({ color, wireframe: true, transparent: true, opacity: 0.1 })
+        : new THREE.MeshPhongMaterial({ 
+            color, 
+            transparent: true, 
+            opacity: 0.85, 
+            emissive: color, 
+            emissiveIntensity: emissive 
+        });
+    
+    MAT_CACHE.set(key, mat);
+    return mat;
+}
+
+const SRC_MAP = {
+    rss: { color: 0x00f3ff, geo: GEO_CACHE.rss },
+    reddit: { color: 0xec4899, geo: GEO_CACHE.reddit },
+    hackernews: { color: 0xffaa00, geo: GEO_CACHE.hackernews },
+    finance_api: { color: 0x00ff9d, geo: GEO_CACHE.finance },
+    weather_api: { color: 0x7000ff, geo: GEO_CACHE.weather },
+    web_scraper: { color: 0xff0055, geo: GEO_CACHE.scraper },
+};
+
+// ─── Initialization ──────────────────────────────────────────
+
 document.addEventListener("DOMContentLoaded", () => {
+    initNexus();
+});
+
+async function initNexus() {
     buildGraph();
     connectWS();
     bindFilterControls();
-    // loadData({ append: false }); // REMOVED: Do not load data on startup
-    refreshStats(); // Initial stats sync
+    refreshStats();
     setInterval(() => refreshStats(), 60000);
-});
+}
 
 async function api(path, opts = {}) {
     try {
@@ -42,7 +108,7 @@ async function api(path, opts = {}) {
         if (!r.ok) throw new Error(r.status);
         return await r.json();
     } catch (e) {
-        console.warn("api", path, e);
+        console.warn("Nexus API Error:", path, e);
         return null;
     }
 }
@@ -51,143 +117,68 @@ function buildGraph() {
     const el = document.getElementById("3d-graph");
 
     G = ForceGraph3D()(el)
-        .backgroundColor("#060610")
+        .backgroundColor("rgba(0,0,0,0)")
         .showNavInfo(false)
         .nodeThreeObject((n) => makeNode(n))
         .nodeThreeObjectExtend(false)
         .nodeLabel((n) => buildTooltip(n))
         .onNodeClick((n) => onClickNode(n))
-        .linkWidth((l) => (l.strong ? 1.8 : 0.4))
-        .linkOpacity(0.6)
-        .linkColor((l) => l.color || "rgba(255,255,255,0.15)")
-        .linkDirectionalParticles((l) => (l.strong ? 3 : 0))
-        .linkDirectionalParticleWidth(1.5)
-        .linkDirectionalParticleSpeed(0.006)
-        .linkDirectionalParticleColor(() => "#00d4ff")
+        .linkWidth((l) => (l.strong ? 1.2 : 0.3))
+        .linkOpacity(0.2)
+        .linkColor((l) => l.color || "rgba(255,255,255,0.05)")
+        .linkDirectionalParticles((l) => (l.strong ? 2 : 0))
+        .linkDirectionalParticleWidth(1.2)
+        .linkDirectionalParticleSpeed(0.01)
+        .linkDirectionalParticleColor(() => THEME.cyan)
         .width(window.innerWidth)
         .height(window.innerHeight);
 
-    G.d3Force("charge").strength(-80);
-    G.d3Force("link").distance((l) => (l.strong ? 60 : 120));
+    G.d3Force("charge").strength(-120);
+    G.d3Force("link").distance((l) => (l.strong ? 80 : 160));
 
+    // Starfield (Static Buffer)
     const starGeo = new THREE.BufferGeometry();
     const verts = [];
     for (let i = 0; i < 3000; i++) {
-        verts.push(
-            (Math.random() - 0.5) * 4000,
-            (Math.random() - 0.5) * 4000,
-            (Math.random() - 0.5) * 4000
-        );
+        verts.push((Math.random() - 0.5) * 5000, (Math.random() - 0.5) * 5000, (Math.random() - 0.5) * 5000);
     }
     starGeo.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
-    const starMat = new THREE.PointsMaterial({
-        color: 0x555577,
-        size: 1.5,
-        transparent: true,
-        opacity: 0.7,
-    });
+    const starMat = new THREE.PointsMaterial({ color: 0x333344, size: 1.5, transparent: true, opacity: 0.5 });
     G.scene().add(new THREE.Points(starGeo, starMat));
 
-    G.scene().add(new THREE.AmbientLight(0xcccccc, 1.2));
-    G.scene().add(new THREE.DirectionalLight(0xffffff, 0.8));
-
+    G.scene().add(new THREE.AmbientLight(0xffffff, 0.9));
+    
     window.addEventListener("resize", () => {
         G.width(window.innerWidth);
         G.height(window.innerHeight);
     });
 }
 
-const SEV_COLORS = {
-    critical: 0xef4444,
-    high: 0xf59e0b,
-    medium: 0x00d4ff,
-    low: 0xa855f7,
-    info: 0x9090a8,
-};
-
-const SRC_MAP = {
-    rss: { color: 0x00d4ff, make: () => new THREE.SphereGeometry(3.5, 24, 24) },
-    reddit: { color: 0xec4899, make: () => new THREE.BoxGeometry(5, 5, 5) },
-    hackernews: { color: 0xf59e0b, make: () => new THREE.TorusGeometry(3.5, 1.2, 8, 20) },
-    finance_api: { color: 0x10b981, make: () => new THREE.ConeGeometry(3.5, 7, 6) },
-    weather_api: { color: 0xa855f7, make: () => new THREE.IcosahedronGeometry(3.5) },
-    web_scraper: { color: 0xef4444, make: () => new THREE.OctahedronGeometry(3.5) },
-};
-
 function makeNode(n) {
     const group = new THREE.Group();
 
     if (n._isInsight) {
         const c = SEV_COLORS[n.severity] || SEV_COLORS.info;
-
-        const core = new THREE.Mesh(
-            new THREE.SphereGeometry(9, 32, 32),
-            new THREE.MeshPhongMaterial({
-                color: c,
-                emissive: c,
-                emissiveIntensity: 0.55,
-                transparent: true,
-                opacity: 0.92,
-            })
-        );
+        const core = new THREE.Mesh(GEO_CACHE.insight, getMaterial(c, false, 0.4));
+        const shield = new THREE.Mesh(GEO_CACHE.shield, getMaterial(c, false, 0.1));
+        shield.rotation.x = Math.PI / 2;
         group.add(core);
-
-        const halo = new THREE.Mesh(
-            new THREE.SphereGeometry(14, 32, 32),
-            new THREE.MeshBasicMaterial({
-                color: c,
-                transparent: true,
-                opacity: 0.12,
-                side: THREE.BackSide,
-            })
-        );
-        group.add(halo);
-
-        const ring = new THREE.Mesh(
-            new THREE.TorusGeometry(16, 0.4, 16, 60),
-            new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.25 })
-        );
-        ring.rotation.x = Math.PI / 2;
-        group.add(ring);
+        group.add(shield);
 
         group.userData.animate = (t) => {
-            ring.rotation.z = t * 0.3;
-            halo.scale.setScalar(1 + Math.sin(t * 2) * 0.06);
+            shield.rotation.z = t * 0.5;
+            core.scale.setScalar(1 + Math.sin(t * 2) * 0.05);
         };
     } else {
-        let shape;
-        if (n.metadata && n.metadata.pipeline === "certstream_keyword_monitor") {
-            shape = {
-                color: 0x39ff14,
-                make: () => new THREE.CylinderGeometry(2, 2, 8, 16),
-            };
-        } else if (n.metadata && n.metadata.pipeline === "gdelt_extremes") {
-            shape = {
-                color: 0xff4500,
-                make: () => new THREE.SphereGeometry(4.5, 16, 16),
-            };
-        } else if (n.metadata && n.metadata.pipeline === "openphish_tld_aggregation") {
-            shape = {
-                color: 0x8a2be2,
-                make: () => new THREE.DodecahedronGeometry(3.5),
-            };
-        } else {
-            shape = SRC_MAP[n.source] || SRC_MAP.rss;
-        }
-
-        const mesh = new THREE.Mesh(
-            shape.make(),
-            new THREE.MeshLambertMaterial({
-                color: shape.color,
-                transparent: true,
-                opacity: 0.85,
-            })
-        );
+        const shape = SRC_MAP[n.source] || SRC_MAP.rss;
+        const mesh = new THREE.Mesh(shape.geo, getMaterial(shape.color));
+        const wire = new THREE.Mesh(shape.geo, getMaterial(0xffffff, true));
         group.add(mesh);
+        group.add(wire);
 
         group.userData.animate = (t) => {
-            mesh.rotation.y = t * 0.5;
-            mesh.rotation.x = Math.sin(t) * 0.15;
+            mesh.rotation.y = t * 0.4;
+            wire.rotation.y = t * 0.4;
         };
     }
 
@@ -197,23 +188,41 @@ function makeNode(n) {
 (function animLoop() {
     requestAnimationFrame(animLoop);
     if (!G || graphState.tab !== "visual") return;
-
     const t = performance.now() * 0.001;
     const gd = G.graphData();
-    if (!gd || !gd.nodes) return;
-
-    gd.nodes.forEach((n) => {
-        if (n.__threeObj && n.__threeObj.userData.animate) {
-            n.__threeObj.userData.animate(t + (n._animOffset || 0));
+    if (gd && gd.nodes) {
+        // Only animate the first 500 nodes for performance if the graph is huge
+        const limit = Math.min(gd.nodes.length, 600);
+        for(let i=0; i<limit; i++) {
+            const n = gd.nodes[i];
+            if (n.__threeObj && n.__threeObj.userData.animate) {
+                n.__threeObj.userData.animate(t + (n._animOffset || 0));
+            }
         }
-    });
+    }
 })();
+
+function buildTooltip(n) {
+    const title = esc(n.title || n.name || "UNIDENTIFIED NODE");
+    if (n._isInsight) {
+        return `<div class="graph-tooltip">
+            <div class="tt-title">INSIGHT: ${title}</div>
+            <div class="tt-sub">${(n.severity || "info").toUpperCase()} • ${Math.round((n.confidence || 0) * 100)}% CONFIDENCE</div>
+        </div>`;
+    }
+    return `<div class="graph-tooltip">
+        <div class="tt-title">${title}</div>
+        <div class="tt-sub">${(n.source || "stream").toUpperCase()} • ${(n.category || "data").toUpperCase()}</div>
+    </div>`;
+}
+
+// ─── Data & Filters ──────────────────────────────────────────
 
 function bindFilterControls() {
     const limitInput = document.getElementById("filter-limit");
     if (limitInput) {
         limitInput.addEventListener("change", () => {
-            limitInput.value = String(clampLimit(Number(limitInput.value || graphState.limits.default)));
+            limitInput.value = String(clampLimit(Number(limitInput.value)));
         });
     }
 }
@@ -223,156 +232,23 @@ function clampLimit(limit) {
     return Math.max(1, Math.min(Math.floor(val), graphState.limits.max));
 }
 
+function getFilters() {
+    return {
+        source: document.getElementById("filter-source")?.value || "",
+        category: document.getElementById("filter-category")?.value || "",
+        timeframe: document.getElementById("filter-timeframe")?.value || "all",
+        start_time: getTimeStartIso(document.getElementById("filter-timeframe")?.value || "all"),
+        insights_only: document.getElementById("filter-insights-only")?.checked || false,
+        random: document.getElementById("filter-random")?.checked || false,
+        limit: clampLimit(Number(document.getElementById("filter-limit")?.value || graphState.limits.default)),
+    };
+}
+
 function getTimeStartIso(timeframe) {
     if (!timeframe || timeframe === "all") return null;
-    const now = Date.now();
-    const map = {
-        "1h": 60 * 60 * 1000,
-        "6h": 6 * 60 * 60 * 1000,
-        "24h": 24 * 60 * 60 * 1000,
-        "7d": 7 * 24 * 60 * 60 * 1000,
-        "30d": 30 * 24 * 60 * 60 * 1000,
-    };
-    const windowMs = map[timeframe];
-    if (!windowMs) return null;
-    return new Date(now - windowMs).toISOString();
-}
-
-function getFilters() {
-    const source = (document.getElementById("filter-source") || {}).value || "";
-    const category = (document.getElementById("filter-category") || {}).value || "";
-    const timeframe = (document.getElementById("filter-timeframe") || {}).value || "all";
-    const insightsOnly = (document.getElementById("filter-insights-only") || {}).checked || false;
-    const isRandom = (document.getElementById("filter-random") || {}).checked || false;
-    const rawLimit = Number((document.getElementById("filter-limit") || {}).value || graphState.limits.default);
-    const limit = clampLimit(rawLimit);
-
-    return {
-        source,
-        category,
-        timeframe,
-        start_time: getTimeStartIso(timeframe),
-        end_time: null,
-        insights_only: insightsOnly,
-        random: isRandom,
-        limit,
-    };
-}
-
-function buildGraphDataPath(filters, offset) {
-    const q = new URLSearchParams();
-    q.set("limit", String(filters.limit));
-    q.set("offset", String(offset));
-    q.set("insight_limit", "300");
-    q.set("insights_only", String(filters.insights_only));
-    if (filters.random) q.set("random", "true");
-    if (filters.source) q.set("source", filters.source);
-    if (filters.category) q.set("category", filters.category);
-    if (filters.start_time) q.set("start_time", filters.start_time);
-    if (filters.end_time) q.set("end_time", filters.end_time);
-    return "/api/graph-data?" + q.toString();
-}
-
-function upsertFilterOptions(selectId, values) {
-    const select = document.getElementById(selectId);
-    if (!select || !Array.isArray(values)) return;
-
-    const existing = new Set(Array.from(select.options).map((o) => o.value));
-    values.forEach((v) => {
-        if (!v || existing.has(v)) return;
-        const opt = document.createElement("option");
-        opt.value = v;
-        opt.textContent = v;
-        select.appendChild(opt);
-    });
-}
-
-function mergeConnections(target, source) {
-    Object.entries(source || {}).forEach(([insightId, rawIds]) => {
-        if (!Array.isArray(rawIds) || !rawIds.length) return;
-        const bucket = target.get(insightId) || new Set();
-        rawIds.forEach((id) => {
-            if (id) bucket.add(String(id));
-        });
-        target.set(insightId, bucket);
-    });
-}
-
-function rehydrateGraphNodes() {
-    const nodes = [];
-    const links = [];
-
-    const prefixedDataIdByRawId = new Map();
-    const dataItems = Array.from(graphState.items.values());
-    dataItems.forEach((item) => {
-        const rawId = String(item.id);
-        const prefixedId = "D" + rawId;
-        prefixedDataIdByRawId.set(rawId, prefixedId);
-        nodes.push({
-            ...item,
-            id: prefixedId,
-            _isInsight: false,
-            _animOffset: Math.random() * 100,
-        });
-    });
-
-    const prefixedInsightIdByRawId = new Map();
-    const insights = Array.from(graphState.insights.values());
-    insights.forEach((insight) => {
-        const rawId = String(insight.id);
-        const prefixedId = "I" + rawId;
-        prefixedInsightIdByRawId.set(rawId, prefixedId);
-        nodes.push({
-            ...insight,
-            id: prefixedId,
-            _isInsight: true,
-            _animOffset: Math.random() * 100,
-        });
-    });
-
-    graphState.connections.forEach((dataIdSet, rawInsightId) => {
-        const sourceId = prefixedInsightIdByRawId.get(rawInsightId);
-        if (!sourceId) return;
-
-        const insight = graphState.insights.get(rawInsightId) || {};
-        dataIdSet.forEach((rawDataId) => {
-            const targetId = prefixedDataIdByRawId.get(rawDataId);
-            if (!targetId) return;
-            links.push({
-                source: sourceId,
-                target: targetId,
-                strong: true,
-                color: sevHex(insight.severity),
-            });
-        });
-    });
-
-    const categories = {};
-    dataItems.forEach((item) => {
-        const cat = item.category || "general";
-        if (!categories[cat]) categories[cat] = [];
-        categories[cat].push(item);
-    });
-
-    Object.values(categories).forEach((arr) => {
-        for (let i = 0; i < Math.min(arr.length, 40); i++) {
-            const a = arr[Math.floor(Math.random() * arr.length)];
-            const b = arr[Math.floor(Math.random() * arr.length)];
-            if (a.id !== b.id) {
-                links.push({
-                    source: prefixedDataIdByRawId.get(String(a.id)),
-                    target: prefixedDataIdByRawId.get(String(b.id)),
-                    strong: false,
-                    color: "rgba(255,255,255,0.04)",
-                });
-            }
-        }
-    });
-
-    G.graphData({ nodes, links });
-    num("stat-data", dataItems.length);
-    num("stat-insights", insights.length);
-    num("stat-links", links.length);
+    const windows = { "1h": 3600, "6h": 21600, "24h": 86400, "7d": 604800 };
+    const seconds = windows[timeframe];
+    return seconds ? new Date(Date.now() - seconds * 1000).toISOString() : null;
 }
 
 async function loadData({ append }) {
@@ -381,34 +257,31 @@ async function loadData({ append }) {
 
     const filters = getFilters();
     const offset = append ? graphState.offset : 0;
-    const path = buildGraphDataPath(filters, offset);
+    
+    const btn = document.getElementById("btn-load-more");
+    if (btn) { btn.disabled = true; btn.textContent = "PROCESSING..."; }
+    toast(append ? "EXPANDING MATRIX..." : "SYNCHRONIZING NEXUS...", "info");
 
-    setLoadMoreState(false, "Loading...");
-    toast(append ? "Loading more graph nodes..." : "Loading intelligence matrix...", "info");
+    const q = new URLSearchParams({
+        limit: String(filters.limit),
+        offset: String(offset),
+        insights_only: String(filters.insights_only),
+    });
+    if (filters.random) q.set("random", "true");
+    if (filters.source) q.set("source", filters.source);
+    if (filters.category) q.set("category", filters.category);
+    if (filters.start_time) q.set("start_time", filters.start_time);
 
-    const graphRes = await api(path);
-    const statsRes = await api("/api/stats");
-    if (statsRes) refreshStats(statsRes);
+    const res = await api("/api/graph-data?" + q.toString());
+    const stats = await api("/api/stats");
+    if (stats) refreshStats(stats);
 
-    if (!graphRes) {
+    if (!res) {
         graphState.loading = false;
-        setLoadMoreState(true, "Load More");
-        toast("Failed to fetch graph data", "error");
+        if (btn) { btn.disabled = false; btn.textContent = "RETRY CONNECTION"; }
+        toast("DATA SYNC FAILED", "error");
         return;
     }
-
-    graphState.limits.default = graphRes.fetch_limits?.default || graphState.limits.default;
-    graphState.limits.max = graphRes.fetch_limits?.max || graphState.limits.max;
-    graphState.limits.effective = graphRes.fetch_limits?.effective || filters.limit;
-
-    const limitInput = document.getElementById("filter-limit");
-    if (limitInput) {
-        limitInput.max = String(graphState.limits.max);
-        limitInput.value = String(clampLimit(Number(limitInput.value || graphState.limits.default)));
-    }
-
-    upsertFilterOptions("filter-source", graphRes.available_sources || []);
-    upsertFilterOptions("filter-category", graphRes.available_categories || []);
 
     if (!append) {
         graphState.items.clear();
@@ -416,292 +289,137 @@ async function loadData({ append }) {
         graphState.connections.clear();
     }
 
-    (graphRes.items || []).forEach((item) => {
-        if (!item || !item.id) return;
-        graphState.items.set(String(item.id), item);
+    (res.items || []).forEach(i => graphState.items.set(String(i.id), i));
+    (res.insights || []).forEach(i => graphState.insights.set(String(i.id), i));
+    
+    Object.entries(res.connections || {}).forEach(([insightId, rawIds]) => {
+        const bucket = graphState.connections.get(insightId) || new Set();
+        rawIds.forEach(id => bucket.add(String(id)));
+        graphState.connections.set(insightId, bucket);
     });
 
-    (graphRes.insights || []).forEach((insight) => {
-        if (!insight || !insight.id) return;
-        graphState.insights.set(String(insight.id), insight);
-    });
-
-    mergeConnections(graphState.connections, graphRes.connections || {});
-
-    graphState.offset = Number(graphRes.next_offset || 0);
-    graphState.hasMore = Boolean(graphRes.has_more);
-
-    const meta = document.getElementById("filter-meta");
-    if (meta) {
-        meta.textContent =
-            "Loaded " +
-            graphState.items.size.toLocaleString() +
-            " nodes, offset " +
-            graphState.offset.toLocaleString() +
-            (graphState.hasMore ? " (more available)" : " (end)");
-    }
-
+    graphState.offset = Number(res.next_offset || 0);
+    graphState.hasMore = Boolean(res.has_more);
+    
+    updateFilterOptions(res.available_sources, res.available_categories);
     rehydrateGraphNodes();
 
-    setLoadMoreState(graphState.hasMore, graphState.hasMore ? "Load More" : "No More Data");
+    if (document.getElementById("filter-meta")) {
+        document.getElementById("filter-meta").textContent = `NODES: ${graphState.items.size} | OFFSET: ${graphState.offset}`;
+    }
+
+    if (btn) {
+        btn.disabled = !graphState.hasMore;
+        btn.textContent = graphState.hasMore ? "EXPAND MATRIX" : "MATRIX COMPLETE";
+    }
+    
     graphState.loading = false;
-
-    toast(
-        "Graph has " +
-            graphState.items.size.toLocaleString() +
-            " data nodes and " +
-            graphState.insights.size.toLocaleString() +
-            " insights",
-        "success"
-    );
+    toast(`NEXUS SYNCED: ${graphState.items.size} NODES`, "success");
 }
 
-function applyFilters() {
-    const filters = getFilters();
-    if (filters.timeframe === "all") {
-        graphState.items.clear();
-        graphState.insights.clear();
-        graphState.connections.clear();
-        graphState.offset = 0;
-        graphState.hasMore = false;
-        rehydrateGraphNodes();
-        const meta = document.getElementById("filter-meta");
-        if (meta) meta.textContent = "Offset 0 (Graph cleared)";
-        toast("Graph cleared. Select a timeframe to load data.", "info");
-        return;
-    }
-    graphState.offset = 0;
-    loadData({ append: false });
+function updateFilterOptions(sources, categories) {
+    const refill = (id, vals) => {
+        const el = document.getElementById(id);
+        if (!el || !vals) return;
+        const current = el.value;
+        el.innerHTML = `<option value="">ALL ${id.includes("source") ? "STREAMS" : "CATEGORIES"}</option>`;
+        vals.forEach(v => {
+            const opt = document.createElement("option");
+            opt.value = v; opt.textContent = v;
+            el.appendChild(opt);
+        });
+        el.value = current;
+    };
+    refill("filter-source", sources);
+    refill("filter-category", categories);
 }
 
-function loadMore() {
-    if (!graphState.hasMore) return;
-    loadData({ append: true });
+function rehydrateGraphNodes() {
+    const nodes = [];
+    const links = [];
+
+    const dataItems = Array.from(graphState.items.values());
+    dataItems.forEach(item => {
+        nodes.push({ ...item, id: "D" + item.id, _isInsight: false, _animOffset: Math.random() * 100 });
+    });
+
+    const insights = Array.from(graphState.insights.values());
+    insights.forEach(insight => {
+        nodes.push({ ...insight, id: "I" + insight.id, _isInsight: true, _animOffset: Math.random() * 100 });
+    });
+
+    graphState.connections.forEach((dataIdSet, rawInsightId) => {
+        const insight = graphState.insights.get(rawInsightId);
+        if (!insight) return;
+        dataIdSet.forEach(rawDataId => {
+            if (graphState.items.has(rawDataId)) {
+                links.push({
+                    source: "I" + rawInsightId,
+                    target: "D" + rawDataId,
+                    strong: true,
+                    color: sevColor(insight.severity, 0.4),
+                });
+            }
+        });
+    });
+
+    // structure sub-links
+    const cats = {};
+    dataItems.forEach(i => { (cats[i.category] = cats[i.category] || []).push(i); });
+    Object.values(cats).forEach(arr => {
+        const linkLimit = Math.min(arr.length, 15);
+        for (let i = 0; i < linkLimit; i++) {
+            const a = arr[Math.floor(Math.random() * arr.length)];
+            const b = arr[Math.floor(Math.random() * arr.length)];
+            if (a.id !== b.id) links.push({ source: "D" + a.id, target: "D" + b.id, strong: false });
+        }
+    });
+
+    G.graphData({ nodes, links });
+    animateValue("stat-data", dataItems.length);
+    animateValue("stat-insights", insights.length);
+    animateValue("stat-links", links.length);
 }
 
-function setLoadMoreState(enabled, label) {
-    const btn = document.getElementById("btn-load-more");
-    if (!btn) return;
-    btn.disabled = !enabled;
-    btn.textContent = label;
-}
-
-function buildTooltip(n) {
-    const title = esc(n.title || n.name || "Node");
-    if (n._isInsight) {
-        return `<div class="graph-tooltip">
-            <div class="tt-title">Insight: ${title}</div>
-            <div class="tt-sub">${(n.severity || "info").toUpperCase()} • ${Math.round((n.confidence || 0) * 100)}% confidence</div>
-        </div>`;
-    }
-    return `<div class="graph-tooltip">
-        <div class="tt-title">${title}</div>
-        <div class="tt-sub">${(n.source || "").replace("_", " ")} • ${(n.category || "").replace("_", " ")}</div>
-    </div>`;
-}
+// ─── Interaction ─────────────────────────────────────────────
 
 function onClickNode(n) {
-    const dist = 80;
+    const dist = 120;
     const ratio = 1 + dist / Math.hypot(n.x || 1, n.y || 1, n.z || 1);
-    G.cameraPosition({ x: n.x * ratio, y: n.y * ratio, z: n.z * ratio }, n, 1800);
+    G.cameraPosition({ x: n.x * ratio, y: n.y * ratio, z: n.z * ratio }, n, 1000);
 
-    const p = document.getElementById("detail-panel");
-    const b = document.getElementById("detail-body");
-    const title = esc(n.title || n.name || "Untitled");
+    const panel = document.getElementById("detail-panel");
+    const body = document.getElementById("detail-body");
+    const title = esc(n.title || n.name || "UNIDENTIFIED NODE");
 
     if (n._isInsight) {
         const sev = n.severity || "info";
-        const conf = Math.round((n.confidence || 0) * 100);
-        const desc = esc(n.description || "");
-        const type = n.insight_type || "";
-        const doms = (Array.isArray(n.domains) ? n.domains : [])
-            .map((d) => `<span class="d-tag tag-${sev}">${esc(d)}</span>`)
-            .join(" ");
-
-        b.innerHTML = `
-            <div class="d-title">Insight: ${title}</div>
-            <div class="d-meta">
-                <span class="d-tag tag-${sev}">${sev.toUpperCase()}</span>
-                <span class="d-tag tag-insight">${type}</span>
-                <span class="d-tag" style="background:rgba(255,255,255,.06);color:var(--text2)">Confidence ${conf}%</span>
-            </div>
-            ${doms ? '<div style="margin-bottom:14px"><b style="color:var(--text);font-size:.75rem">Domains:</b><br>' + doms + "</div>" : ""}
-            <div class="d-content">${desc}</div>
-        `;
-    } else {
-        const src = n.source || "unknown";
-        const cat = n.category || "";
-        const time = timeAgo(n.collected_at);
-
-        let body = "";
-        if (n.metadata && n.metadata.pipeline === "certstream_keyword_monitor" && n.metadata.counts) {
-            body = `<div style="margin-bottom:8px">${esc(n.content)}</div><ul>`;
-            Object.entries(n.metadata.counts).forEach(([kw, count]) => {
-                body += `<li style="margin-bottom:2px"><b>${esc(kw)}</b>: ${count} hits</li>`;
-            });
-            body += "</ul>";
-        } else if (n.metadata && n.metadata.pipeline === "gdelt_extremes" && n.metadata.events) {
-            body = `<div style="margin-bottom:8px">${esc(n.content)}</div><div style="max-height:200px;overflow-y:auto;">`;
-            n.metadata.events.forEach((ev) => {
-                body += `<div style="margin-bottom:6px;padding:6px;background:rgba(255,255,255,0.05);border-radius:4px;font-size:0.8rem">`;
-                body += `<div><b>Actors:</b> ${esc(ev.actor1 || "unknown")} - ${esc(ev.actor2 || "unknown")}</div>`;
-                if (ev.tone !== null) body += `<div><b>Tone:</b> ${ev.tone}</div>`;
-                if (ev.goldstein !== null) body += `<div><b>Goldstein:</b> ${ev.goldstein}</div>`;
-                if (ev.source_url) {
-                    body += `<div style="margin-top:4px"><a class="d-link" href="${ev.source_url}" target="_blank">Source Link -></a></div>`;
-                }
-                body += "</div>";
-            });
-            body += "</div>";
-        } else if (n.metadata && n.metadata.pipeline === "openphish_tld_aggregation" && n.metadata.top_tlds) {
-            body = `<div style="margin-bottom:8px">${esc(n.content)}</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">`;
-            n.metadata.top_tlds.forEach((tld) => {
-                body += `<span class="d-tag tag-high">${esc(tld.tld)} (${tld.count})</span>`;
-            });
-            body += "</div>";
-        } else {
-            body = esc(typeof n.content === "object" ? JSON.stringify(n.content, null, 2) : n.content || "");
-        }
-
-        b.innerHTML = `
+        const tags = (n.domains || []).map(d => `<span class="d-tag tag-cyan">${esc(d)}</span>`).join("");
+        body.innerHTML = `
             <div class="d-title">${title}</div>
             <div class="d-meta">
-                <span class="d-tag tag-${src}">${src.replace("_", " ").toUpperCase()}</span>
-                <span class="d-tag" style="background:rgba(255,255,255,.06);color:var(--text2)">${cat.replace("_", " ")}</span>
-                <span style="font-size:.7rem;color:var(--text3)">${time}</span>
+                <span class="d-tag tag-${sev === 'critical' ? 'crimson' : sev === 'high' ? 'amber' : 'purple'}">${sev.toUpperCase()}</span>
+                <span class="d-tag">CONFIDENCE ${Math.round((n.confidence || 0) * 100)}%</span>
             </div>
-            ${n.url ? `<a class="d-link" href="${n.url}" target="_blank">Open source link -></a>` : ""}
-            <div class="d-content">${body || '<span class="muted">No content body available.</span>'}</div>
+            <div style="margin-bottom:20px">${tags}</div>
+            <div class="d-content">${esc(n.description || "")}</div>
+        `;
+    } else {
+        body.innerHTML = `
+            <div class="d-title">${title}</div>
+            <div class="d-meta">
+                <span class="d-tag tag-cyan">${(n.source || "STREAM").toUpperCase()}</span>
+                <span class="d-tag">${(n.category || "GENERAL").toUpperCase()}</span>
+                <span class="d-tag">${timeAgo(n.collected_at)}</span>
+            </div>
+            ${n.url ? `<a href="${n.url}" target="_blank" class="d-link">OPEN SOURCE INTELLIGENCE ↗</a>` : ""}
+            <div class="d-content" style="margin-top:20px">${esc(String(n.content || ""))}</div>
         `;
     }
-
-    p.classList.add("open");
+    panel.classList.add("open");
 }
 
-function closeDetail() {
-    document.getElementById("detail-panel").classList.remove("open");
-}
-
-function reloadGraph() {
-    applyFilters();
-}
-
-function recenter() {
-    G.zoomToFit(1200, 80);
-}
-
-async function refreshStats(s) {
-    if (!s) s = await api("/api/stats");
-    if (!s) return;
-    num("stat-alerts", s.active_alerts || 0);
-    const llmDot = document.getElementById("llm-dot");
-    const llmText = document.getElementById("llm-text");
-    const on = s.llm_status === "connected";
-    llmDot.className = `dot ${on ? "online" : "offline"}`;
-    llmText.textContent = on ? "LLM Online" : "LLM Offline";
-}
-
-async function doCollect() {
-    const b = document.getElementById("btn-collect");
-    b.disabled = true;
-    b.textContent = "Collecting...";
-    toast("Running data collection sweeps...", "info");
-
-    const r = await api("/api/collect/now", { method: "POST" });
-    if (r) {
-        const n = Object.values(r.results || {}).reduce((sum, v) => sum + (typeof v === "number" ? v : 0), 0);
-        toast(`Collected ${n} new items`, "success");
-        await loadData({ append: false });
-    } else {
-        toast("Collection error", "error");
-    }
-
-    b.disabled = false;
-    b.textContent = "Collect Data";
-}
-
-async function doAnalyze() {
-    const b = document.getElementById("btn-analyze");
-    b.disabled = true;
-    b.textContent = "Analyzing...";
-    
-    // Grab current filters
-    const filters = getFilters();
-    
-    toast("Running pattern analysis on filtered view...", "info");
-
-    const r = await api("/api/analyze/now", { 
-        method: "POST",
-        body: JSON.stringify(filters)
-    });
-    
-    if (r && r.results) {
-        toast(`Found ${r.results.analytics_insights || 0} patterns, ${r.results.alerts_generated || 0} alerts`, "success");
-        await loadData({ append: false });
-    } else {
-        toast("Analysis error", "error");
-    }
-
-    b.disabled = false;
-    b.textContent = "Find Patterns";
-}
-
-function connectWS() {
-    const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    try {
-        ws = new WebSocket(`${proto}//${location.host}/ws/live`);
-        ws.onopen = () => {
-            setWS(true);
-            if (wsTimer) {
-                clearInterval(wsTimer);
-                wsTimer = null;
-            }
-        };
-        ws.onmessage = (e) => {
-            try {
-                const m = JSON.parse(e.data);
-                if (m.type === "collection_complete" || m.type === "analysis_complete") {
-                    toast(m.type === "collection_complete" ? "Collection finished" : "Analysis complete", "success");
-                    loadData({ append: false });
-                }
-            } catch (_) {
-                // Ignore malformed payloads.
-            }
-        };
-        ws.onclose = () => {
-            setWS(false);
-            if (!wsTimer) {
-                wsTimer = setInterval(() => {
-                    if (!ws || ws.readyState === 3) connectWS();
-                }, 5000);
-            }
-        };
-        ws.onerror = () => setWS(false);
-    } catch (_) {
-        setWS(false);
-    }
-}
-
-function setWS(on) {
-    document.getElementById("ws-dot").className = `dot ${on ? "online" : "offline"}`;
-    document.getElementById("ws-text").textContent = on ? "Live" : "Disconnected";
-}
-
-function toast(msg, type = "info") {
-    const c = document.getElementById("toasts");
-    const d = document.createElement("div");
-    d.className = `toast ${type}`;
-    const icons = { success: "OK", error: "ERR", info: "INFO" };
-    d.innerHTML = `<b>${icons[type] || "INFO"}</b> ${esc(msg)}`;
-    c.appendChild(d);
-
-    setTimeout(() => {
-        d.style.opacity = "0";
-        d.style.transform = "translateX(30px)";
-        d.style.transition = ".3s";
-        setTimeout(() => d.remove(), 300);
-    }, 4000);
-}
+// ─── Utils ───────────────────────────────────────────────────
 
 function esc(t) {
     const d = document.createElement("div");
@@ -711,162 +429,145 @@ function esc(t) {
 
 function timeAgo(s) {
     if (!s) return "";
-    try {
-        const ms = Date.now() - new Date(s).getTime();
-        const m = Math.floor(ms / 60000);
-        const h = Math.floor(ms / 3600000);
-        const d = Math.floor(ms / 86400000);
-        if (m < 1) return "just now";
-        if (m < 60) return `${m}m ago`;
-        if (h < 24) return `${h}h ago`;
-        if (d < 7) return `${d}d ago`;
-        return new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    } catch (_) {
-        return "";
-    }
+    const ms = Date.now() - new Date(s).getTime();
+    const m = Math.floor(ms / 60000);
+    if (m < 1) return "JUST NOW";
+    if (m < 60) return `${m}M AGO`;
+    const h = Math.floor(ms / 3600000);
+    if (h < 24) return `${h}H AGO`;
+    return new Date(s).toLocaleDateString();
 }
 
-function num(id, target) {
+function sevColor(s, alpha = 1) {
+    const colors = { critical: `rgba(255,0,85,${alpha})`, high: `rgba(255,170,0,${alpha})`, medium: `rgba(0,243,255,${alpha})`, low: `rgba(112,0,255,${alpha})` };
+    return colors[s] || `rgba(160,160,184,${alpha})`;
+}
+
+function animateValue(id, target) {
     const el = document.getElementById(id);
     if (!el) return;
-
-    const cur = parseInt(el.textContent, 10) || 0;
-    if (cur === target) return;
-
-    const diff = target - cur;
-    const steps = Math.min(Math.abs(diff), 25) || 1;
-    const step = diff / steps;
-    let i = 0;
-
-    const iv = setInterval(() => {
-        i++;
-        if (i >= steps) {
-            el.textContent = target.toLocaleString();
-            clearInterval(iv);
-            return;
-        }
-        el.textContent = Math.round(cur + step * i).toLocaleString();
-    }, 25);
-}
-
-function sevHex(s) {
-    return (
-        {
-            critical: "rgba(239,68,68,0.5)",
-            high: "rgba(245,158,11,0.5)",
-            medium: "rgba(0,212,255,0.5)",
-            low: "rgba(168,85,247,0.5)",
-        }[s] || "rgba(144,144,168,0.3)"
-    );
-}
-
-/* ─── Tab & Technical Console Logic ───────────────────────── */
-
-function switchTheme(tabId) {
-    if (graphState.tab === tabId) return;
-    graphState.tab = tabId;
-
-    document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
-    const activeBtn = document.querySelector(`.tab-btn[onclick="switchTheme('${tabId}')"]`);
-    if (activeBtn) activeBtn.classList.add("active");
-
-    const visual = document.getElementById("tab-visual");
-    const technical = document.getElementById("tab-technical");
-
-    if (tabId === "visual") {
-        if (visual) visual.style.display = "block";
-        if (technical) technical.style.display = "none";
-        if (G) G.resumeAnimation();
-    } else {
-        if (visual) visual.style.display = "none";
-        if (technical) technical.style.display = "flex";
-        if (G) G.pauseAnimation();
-        loadTableData();
+    const current = parseInt(el.textContent) || 0;
+    if (current === target) return;
+    let start = null;
+    function step(t) {
+        if (!start) start = t;
+        const progress = Math.min((t - start) / 800, 1);
+        el.textContent = Math.floor(progress * (target - current) + current).toLocaleString();
+        if (progress < 1) requestAnimationFrame(step);
     }
+    requestAnimationFrame(step);
+}
+
+function toast(msg, type = "info") {
+    const container = document.getElementById("toasts");
+    const d = document.createElement("div");
+    d.className = `toast ${type}`;
+    d.innerHTML = `<b>${type.toUpperCase()}</b> ${esc(msg)}`;
+    container.appendChild(d);
+    setTimeout(() => { d.style.opacity = "0"; setTimeout(() => d.remove(), 500); }, 4000);
+}
+
+// ─── Actions & Navigation ────────────────────────────────────
+
+async function doAnalyze() {
+    const btn = document.getElementById("btn-analyze");
+    btn.disabled = true;
+    btn.querySelector(".btn-label").textContent = "SYNTHESIZING...";
+    const r = await api("/api/analyze/now", { method: "POST", body: JSON.stringify(getFilters()) });
+    if (r && r.results) {
+        toast(`SYNTHESIZED ${r.results.analytics_insights} PATTERNS`, "success");
+        loadData({ append: false });
+    }
+    btn.disabled = false;
+    btn.querySelector(".btn-label").textContent = "SYNTHESIZE PATTERNS";
+}
+
+async function doCollect() {
+    const btn = document.getElementById("btn-collect");
+    btn.disabled = true; btn.textContent = "HARVESTING...";
+    const r = await api("/api/collect/now", { method: "POST" });
+    if (r) {
+        toast("HARVEST COMPLETE", "success");
+        loadData({ append: false });
+    }
+    btn.disabled = false; btn.textContent = "⚡ TRIGGER HARVEST";
+}
+
+function switchTheme(id) {
+    if (graphState.tab === id) return;
+    graphState.tab = id;
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === id));
+    document.querySelectorAll(".tab-content").forEach(c => c.classList.toggle("active", c.id === `tab-${id}`));
+    if (id === "visual") { if (G) G.resumeAnimation(); } 
+    else { if (G) G.pauseAnimation(); loadTableData(); }
 }
 
 async function loadTableData() {
-    const btnRefresh = document.querySelector(".tech-controls .btn-outline");
-    if (btnRefresh) {
-        btnRefresh.disabled = true;
-        btnRefresh.textContent = "Loading...";
-    }
-
-    const { source, category } = getFilters();
-    let url = "/api/data?limit=2500";
-    if (source) url += "&source=" + encodeURIComponent(source);
-    if (category) url += "&category=" + encodeURIComponent(category);
-
-    const res = await api(url);
-
-    if (btnRefresh) {
-        btnRefresh.disabled = false;
-        btnRefresh.textContent = "Refresh Database";
-    }
-
+    const res = await api("/api/data?limit=1000");
     if (res && res.items) {
         graphState.techData = res.items;
-        
-        const sources = new Set();
-        const cats = new Set();
-        graphState.techData.forEach((i) => {
-            if (i.source) sources.add(i.source);
-            if (i.category) cats.add(i.category);
-        });
-        
-        const refill = (id, items, defaultText) => {
-            const el = document.getElementById(id);
-            if (!el) return;
-            el.innerHTML = `<option value="">${defaultText}</option>`;
-            Array.from(items).sort().forEach(val => {
-                const opt = document.createElement("option");
-                opt.value = val;
-                opt.textContent = val;
-                el.appendChild(opt);
-            });
-        };
-        
-        refill("tech-filter-source", sources, "All Sources");
-        refill("tech-filter-category", cats, "All Categories");
-
         filterTechTable();
-    } else {
-        toast("Failed to load table data", "error");
     }
 }
 
 function filterTechTable() {
     const term = (document.getElementById("tech-search")?.value || "").toLowerCase();
-    const fSource = document.getElementById("tech-filter-source")?.value || "";
-    const fCat = document.getElementById("tech-filter-category")?.value || "";
-
-    const filtered = graphState.techData.filter((i) => {
-        if (fSource && i.source !== fSource) return false;
-        if (fCat && i.category !== fCat) return false;
-        if (term) {
-            const sumChars = String(i.content || "").toLowerCase();
-            if (!sumChars.includes(term)) return false;
-        }
-        return true;
-    });
-
-    const meta = document.getElementById("tech-meta");
-    if (meta) meta.textContent = `Showing ${filtered.length.toLocaleString()} rows`;
-
+    const filtered = graphState.techData.filter(i => !term || String(i.content).toLowerCase().includes(term));
+    document.getElementById("tech-meta").textContent = `${filtered.length} RECORDS`;
     const body = document.getElementById("tech-table-body");
-    if (!body) return;
-
-    body.innerHTML = filtered.map((i) => {
-        const d = timeAgo(i.collected_at);
-        const linkHTML = i.url ? `<a href="${esc(i.url)}" target="_blank" style="color:var(--cyan)">↗ Link</a>` : "-";
-        const contentStr = esc(String(i.content || ""));
-        
-        return `<tr>
-            <td style="color:var(--text3)">${d}</td>
-            <td style="color:var(--cyan)">${esc(i.source || "")}</td>
-            <td style="color:var(--amber)">${esc(i.category || "")}</td>
-            <td><div style="max-height:100px;overflow-y:hidden;text-overflow:ellipsis">${contentStr}</div></td>
-            <td>${linkHTML}</td>
-        </tr>`;
-    }).join("");
+    body.innerHTML = filtered.map(i => `
+        <tr>
+            <td class="col-time">${timeAgo(i.collected_at)}</td>
+            <td class="col-source">${esc(i.source)}</td>
+            <td class="col-cat">${esc(i.category)}</td>
+            <td>${esc(String(i.content).substring(0, 150))}...</td>
+            <td class="col-link">${i.url ? `<a href="${i.url}" target="_blank" style="color:var(--accent-cyan)">↗</a>` : '-'}</td>
+        </tr>
+    `).join("");
 }
+
+function connectWS() {
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    ws = new WebSocket(`${proto}//${location.host}/ws/live`);
+    ws.onopen = () => updateWSStatus(true);
+    ws.onclose = () => { updateWSStatus(false); setTimeout(connectWS, 5000); };
+    ws.onmessage = (e) => {
+        const m = JSON.parse(e.data);
+        if (m.type === "analysis_complete" || m.type === "collection_complete") {
+            toast(m.type.replace("_", " ").toUpperCase(), "success");
+            loadData({ append: false });
+        }
+    };
+}
+
+function updateWSStatus(on) {
+    const dot = document.getElementById("ws-dot");
+    const text = document.getElementById("ws-text");
+    if(dot && text) {
+        dot.className = `status-dot ${on ? 'online' : 'offline'}`;
+        text.textContent = on ? 'NEXUS LIVE' : 'DISCONNECTED';
+    }
+}
+
+async function refreshStats(s) {
+    if (!s) s = await api("/api/stats");
+    if (!s) return;
+    animateValue("stat-alerts", s.active_alerts || 0);
+    const on = s.llm_status === "connected";
+    if(document.getElementById("llm-dot")) {
+        document.getElementById("llm-dot").className = `status-dot ${on ? 'online' : 'offline'}`;
+        document.getElementById("llm-text").textContent = on ? 'LLM ACTIVE' : 'LLM OFFLINE';
+    }
+}
+
+// Global Exports
+window.switchTheme = switchTheme;
+window.applyFilters = () => loadData({ append: false });
+window.loadMore = () => loadData({ append: true });
+window.doAnalyze = doAnalyze;
+window.doCollect = doCollect;
+window.reloadGraph = () => loadData({ append: false });
+window.recenter = () => G.zoomToFit(1000, 100);
+window.closeDetail = () => document.getElementById("detail-panel").classList.remove("open");
+window.filterTechTable = filterTechTable;
+window.loadTableData = loadTableData;
